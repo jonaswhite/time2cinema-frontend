@@ -14,11 +14,13 @@ const MOVIE = {
 };
 
 const CINEMAS = [
-  { id: "cinemaA", name: "台北信義威秀影城" },
-  { id: "cinemaB", name: "美麗華大直影城" },
-  { id: "cinemaC", name: "國賓大戲院" },
-  { id: "cinemaD", name: "板橋大遠百威秀" },
-  { id: "cinemaE", name: "喜滿客京華影城" }
+  { id: "cinemaA", name: "台北信義威秀影城", city: "台北市", district: "信義區" },
+  { id: "cinemaB", name: "美麗華大直影城", city: "台北市", district: "中山區" },
+  { id: "cinemaC", name: "國賓大戲院", city: "台北市", district: "萬華區" },
+  { id: "cinemaD", name: "板橋大遠百威秀", city: "新北市", district: "板橋區" },
+  { id: "cinemaE", name: "喜滿客京華影城", city: "高雄市", district: "前鎮區" },
+  { id: "cinemaF", name: "高雄大遠百威秀", city: "高雄市", district: "苓雅區" },
+  { id: "cinemaG", name: "台中大遠百威秀", city: "台中市", district: "西屯區" },
 ];
 
 // 三天的日期
@@ -105,24 +107,35 @@ const SHOWTIMES: Record<string, Record<string, Array<{ time: string; hall: strin
 
 export default function ShowtimesPage() {
   const [cinemaQuery, setCinemaQuery] = useState("");
-  const [selectedCinema, setSelectedCinema] = useState<string | null>(null);
+  const [selectedCinemas, setSelectedCinemas] = useState<string[]>([]);
   const [selectedDateIdx, setSelectedDateIdx] = useState(0);
   const selectedDate = dateTabs[selectedDateIdx].date;
   const selectedDateKey = formatDateKey(selectedDate);
 
-  // 電影院搜尋過濾
-  const filteredCinemas = CINEMAS.filter(c => c.name.includes(cinemaQuery));
+  // 電影院搜尋過濾（名稱、縣市、行政區）
+  const filteredCinemas = CINEMAS.filter(c => {
+    const q = cinemaQuery.trim();
+    if (!q) return true;
+    return (
+      c.name.includes(q) ||
+      c.city.includes(q) ||
+      c.district.includes(q)
+    );
+  });
 
   // 場次 group by 電影院，依照選擇的日期
   const showtimesByCinema = React.useMemo(() => {
     const groups: Record<string, Array<{ time: string; hall: string; lang: string }>> = {};
-    filteredCinemas.forEach(c => {
-      if (selectedCinema && c.id !== selectedCinema) return;
+    // 如果有選擇多個電影院，只顯示這些
+    const cinemas = selectedCinemas.length > 0
+      ? filteredCinemas.filter(c => selectedCinemas.includes(c.id))
+      : [];
+    cinemas.forEach(c => {
       const times = SHOWTIMES[c.id]?.[selectedDateKey] || [];
       if (times.length > 0) groups[c.id] = times;
     });
     return groups;
-  }, [selectedCinema, filteredCinemas, selectedDateKey]);
+  }, [selectedCinemas, filteredCinemas, selectedDateKey]);
 
 
   return (
@@ -148,9 +161,13 @@ export default function ShowtimesPage() {
           {filteredCinemas.map(c => (
             <Button
               key={c.id}
-              variant={selectedCinema === c.id ? "default" : "outline"}
+              variant={selectedCinemas.includes(c.id) ? "default" : "outline"}
               className="text-sm"
-              onClick={() => setSelectedCinema(selectedCinema === c.id ? null : c.id)}
+              onClick={() => setSelectedCinemas(prev =>
+                prev.includes(c.id)
+                  ? prev.filter(id => id !== c.id)
+                  : [...prev, c.id]
+              )}
             >
               {c.name}
             </Button>
@@ -171,7 +188,9 @@ export default function ShowtimesPage() {
         ))}
       </div>
       <div className="w-full max-w-lg flex flex-col gap-6">
-        {Object.keys(showtimesByCinema).length === 0 ? (
+        {selectedCinemas.length === 0 ? (
+          <div className="text-neutral-500 text-center py-8">請先選擇電影院</div>
+        ) : Object.keys(showtimesByCinema).length === 0 ? (
           <div className="text-neutral-500 text-center py-8">查無場次</div>
         ) : (
           Object.entries(showtimesByCinema).map(([cid, showtimes]) => {
