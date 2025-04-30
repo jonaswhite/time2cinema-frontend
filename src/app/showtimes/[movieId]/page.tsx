@@ -1,9 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import Map, { Marker } from 'react-map-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 
 // 假資料
 const MOVIE = {
@@ -14,13 +17,13 @@ const MOVIE = {
 };
 
 const CINEMAS = [
-  { id: "cinemaA", name: "台北信義威秀影城", city: "台北市", district: "信義區" },
-  { id: "cinemaB", name: "美麗華大直影城", city: "台北市", district: "中山區" },
-  { id: "cinemaC", name: "國賓大戲院", city: "台北市", district: "萬華區" },
-  { id: "cinemaD", name: "板橋大遠百威秀", city: "新北市", district: "板橋區" },
-  { id: "cinemaE", name: "喜滿客京華影城", city: "高雄市", district: "前鎮區" },
-  { id: "cinemaF", name: "高雄大遠百威秀", city: "高雄市", district: "苓雅區" },
-  { id: "cinemaG", name: "台中大遠百威秀", city: "台中市", district: "西屯區" },
+  { id: "cinemaA", name: "台北信義威秀影城", city: "台北市", district: "信義區", lat: 25.033964, lng: 121.564468 },
+  { id: "cinemaB", name: "美麗華大直影城", city: "台北市", district: "中山區", lat: 25.082097, lng: 121.557594 },
+  { id: "cinemaC", name: "國賓大戲院", city: "台北市", district: "萬華區", lat: 25.045204, lng: 121.508903 },
+  { id: "cinemaD", name: "板橋大遠百威秀", city: "新北市", district: "板橋區", lat: 25.013607, lng: 121.464825 },
+  { id: "cinemaE", name: "喜滿客京華影城", city: "高雄市", district: "前鎮區", lat: 22.616716, lng: 120.308953 },
+  { id: "cinemaF", name: "高雄大遠百威秀", city: "高雄市", district: "苓雅區", lat: 22.616302, lng: 120.302174 },
+  { id: "cinemaG", name: "台中大遠百威秀", city: "台中市", district: "西屯區", lat: 24.167984, lng: 120.645821 },
 ];
 
 // 三天的日期
@@ -105,10 +108,15 @@ const SHOWTIMES: Record<string, Record<string, Array<{ time: string; hall: strin
   },
 };
 
+const MAPBOX_TOKEN = "pk.eyJ1Ijoiam9uYXN3aGl0ZSIsImEiOiJjbWEydDFwcWswMTdwMm1vaDFuNzcwa21qIn0.yYklARsM9Thk2vuygcDzXg";
+
 export default function ShowtimesPage() {
   const [cinemaQuery, setCinemaQuery] = useState("");
   const [selectedCinemas, setSelectedCinemas] = useState<string[]>([]);
   const [selectedDateIdx, setSelectedDateIdx] = useState(0);
+  const [hoverCinemaId, setHoverCinemaId] = useState<string | null>(null);
+  const [hoverCinemaLngLat, setHoverCinemaLngLat] = useState<[number, number] | null>(null);
+  const mapRef = useRef<any>(null);
   const selectedDate = dateTabs[selectedDateIdx].date;
   const selectedDateKey = formatDateKey(selectedDate);
 
@@ -149,6 +157,109 @@ export default function ShowtimesPage() {
           <div className="text-white text-lg font-bold mb-1">{MOVIE.name}</div>
           <div className="text-neutral-400 text-xs">上映：{MOVIE.release}</div>
         </div>
+      </div>
+      {/* Mapbox 地圖區塊 */}
+      <div className="w-full max-w-lg mb-4" style={{ height: 320, position: 'relative' }}>
+        <Map
+          ref={mapRef}
+          mapboxAccessToken={MAPBOX_TOKEN}
+          initialViewState={{
+            longitude: 121.564468,
+            latitude: 25.033964,
+            zoom: 11
+          }}
+          style={{ width: '100%', height: 320, borderRadius: 16 }}
+          mapStyle="mapbox://styles/mapbox/dark-v11"
+        >
+          {CINEMAS.map(cinema => (
+            <Marker
+              key={cinema.id}
+              longitude={cinema.lng}
+              latitude={cinema.lat}
+              anchor="bottom"
+              onClick={(e: any) => {
+                e.originalEvent.stopPropagation();
+                setSelectedCinemas(prev =>
+                  prev.includes(cinema.id)
+                    ? prev.filter(id => id !== cinema.id)
+                    : [...prev, cinema.id]
+                );
+              }}
+            >
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 17,
+                  background: selectedCinemas.includes(cinema.id)
+                    ? '#FFD600'
+                    : 'linear-gradient(135deg, #fff 60%, #FFD600 100%)',
+                  border: selectedCinemas.includes(cinema.id)
+                    ? '3px solid #FFD600'
+                    : '2px solid #111',
+                  boxShadow: selectedCinemas.includes(cinema.id)
+                    ? '0 0 10px 2px #FFD60099, 0 2px 12px #000b'
+                    : '0 2px 10px #000b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: selectedCinemas.includes(cinema.id) ? '#111' : '#222',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  fontSize: 20,
+                  position: 'relative',
+                  transition: 'all 0.15s',
+                  zIndex: hoverCinemaId === cinema.id ? 2 : 1
+                }}
+                onMouseEnter={() => {
+                  setHoverCinemaId(cinema.id);
+                  setHoverCinemaLngLat([cinema.lng, cinema.lat]);
+                }}
+                onMouseLeave={() => {
+                  setHoverCinemaId(null);
+                  setHoverCinemaLngLat(null);
+                }}
+              >
+                <span style={{
+                  filter: selectedCinemas.includes(cinema.id) ? '' : 'drop-shadow(0 0 2px #fff)',
+                  fontSize: 22
+                }}>🎞️</span>
+              </div>
+            </Marker>
+          ))}
+        </Map>
+        {/* Portal tooltip */}
+        {hoverCinemaId && hoverCinemaLngLat && mapRef.current && (() => {
+          const map = mapRef.current.getMap ? mapRef.current.getMap() : mapRef.current;
+          const container = map && map.getContainer ? map.getContainer() : (map && map._container ? map._container : null);
+          if (!container) return null;
+          const rect = container.getBoundingClientRect();
+          const pt = map.project(hoverCinemaLngLat);
+          return createPortal(
+            <div
+              style={{
+                position: 'fixed',
+                left: pt.x + rect.left,
+                top: pt.y + rect.top - 40,
+                background: 'rgba(30,30,30,0.97)',
+                color: '#fff',
+                padding: '6px 14px',
+                borderRadius: 8,
+                fontSize: 15,
+                fontWeight: 600,
+                whiteSpace: 'nowrap',
+                boxShadow: '0 2px 12px #000c',
+                pointerEvents: 'none',
+                zIndex: 2000,
+                transform: 'translate(-50%, -100%)',
+                border: 'none'
+              }}
+            >
+              {CINEMAS.find(c => c.id === hoverCinemaId)?.name}
+            </div>,
+            document.body
+          );
+        })()}
       </div>
       <div className="w-full max-w-lg mb-8">
         <Input
