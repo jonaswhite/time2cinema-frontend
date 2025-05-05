@@ -1,30 +1,45 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import Map, { Marker } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import Link from "next/link";
 
-// 假資料
-const MOVIE = {
-  id: "dune2",
-  name: "沙丘：第二部",
-  release: "2025-03-01",
-  poster: "https://image.tmdb.org/t/p/w500/8uUU2pxm6IYZw8UgnKJyx7Dqwu9.jpg"
+// 電影資料介面
+interface MovieInfo {
+  id: string;
+  name: string;
+  release: string;
+  poster: string;
+}
+
+// 電影院資料介面
+interface Cinema {
+  id: string;
+  name: string;
+  city: string;
+  district: string;
+  address: string;
+  type: string;
+  special: string;
+  lat: number;
+  lng: number;
+}
+
+// 預設電影資料
+const DEFAULT_MOVIE: MovieInfo = {
+  id: "default",
+  name: "電影資訊載入中...",
+  release: "-",
+  poster: "https://placehold.co/500x750/222/white?text=Loading"
 };
 
-const CINEMAS = [
-  { id: "cinemaA", name: "台北信義威秀影城", city: "台北市", district: "信義區", lat: 25.033964, lng: 121.564468 },
-  { id: "cinemaB", name: "美麗華大直影城", city: "台北市", district: "中山區", lat: 25.082097, lng: 121.557594 },
-  { id: "cinemaC", name: "國賓大戲院", city: "台北市", district: "萬華區", lat: 25.045204, lng: 121.508903 },
-  { id: "cinemaD", name: "板橋大遠百威秀", city: "新北市", district: "板橋區", lat: 25.013607, lng: 121.464825 },
-  { id: "cinemaE", name: "喜滿客京華影城", city: "高雄市", district: "前鎮區", lat: 22.616716, lng: 120.308953 },
-  { id: "cinemaF", name: "高雄大遠百威秀", city: "高雄市", district: "苓雅區", lat: 22.616302, lng: 120.302174 },
-  { id: "cinemaG", name: "台中大遠百威秀", city: "台中市", district: "西屯區", lat: 24.167984, lng: 120.645821 },
-];
+// 電影院數據將從 API 獲取
 
 // 三天的日期
 const today = new Date();
@@ -111,17 +126,86 @@ const SHOWTIMES: Record<string, Record<string, Array<{ time: string; hall: strin
 const MAPBOX_TOKEN = "pk.eyJ1Ijoiam9uYXN3aGl0ZSIsImEiOiJjbWEydDFwcWswMTdwMm1vaDFuNzcwa21qIn0.yYklARsM9Thk2vuygcDzXg";
 
 export default function ShowtimesPage() {
-  const [cinemaQuery, setCinemaQuery] = useState("");
-  const [selectedCinemas, setSelectedCinemas] = useState<string[]>([]);
+  const router = useRouter();
+  const params = useParams();
+  const movieId = params?.movieId as string;
+  const decodedMovieId = movieId ? decodeURIComponent(movieId) : "";
+  
+  const [movie, setMovie] = useState<MovieInfo>(DEFAULT_MOVIE);
+  const [loading, setLoading] = useState(true);
+  const [cinemas, setCinemas] = useState<Cinema[]>([]);
+  const [cinemasLoading, setCinemasLoading] = useState(true);
   const [selectedDateIdx, setSelectedDateIdx] = useState(0);
+  const [selectedCinemas, setSelectedCinemas] = useState<string[]>([]);
+  const [cinemaQuery, setCinemaQuery] = useState("");
   const [hoverCinemaId, setHoverCinemaId] = useState<string | null>(null);
   const [hoverCinemaLngLat, setHoverCinemaLngLat] = useState<[number, number] | null>(null);
   const mapRef = useRef<any>(null);
+  
+  // 獲取電影資訊
+  useEffect(() => {
+    const fetchMovieInfo = async () => {
+      if (!decodedMovieId) return;
+      
+      try {
+        setLoading(true);
+        // 從票房 API 獲取電影資訊
+        const response = await fetch(`http://localhost:4000/api/tmdb/boxoffice-with-posters`);
+        
+        if (!response.ok) {
+          throw new Error(`API 請求失敗: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // 尋找符合電影名稱的電影
+        const movieData = data.find((m: any) => m.title === decodedMovieId);
+        
+        if (movieData) {
+          setMovie({
+            id: encodeURIComponent(movieData.title),
+            name: movieData.title,
+            release: movieData.releaseDate,
+            poster: movieData.posterUrl || "https://placehold.co/500x750/222/white?text=No+Poster"
+          });
+        }
+      } catch (err) {
+        console.error('獲取電影資訊失敗:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchMovieInfo();
+  }, [decodedMovieId]);
+  
+  // 獲取電影院資訊
+  useEffect(() => {
+    const fetchCinemas = async () => {
+      try {
+        setCinemasLoading(true);
+        const response = await fetch(`http://localhost:4000/api/cinemas`);
+        
+        if (!response.ok) {
+          throw new Error(`獲取電影院數據失敗: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        setCinemas(data);
+      } catch (err) {
+        console.error('獲取電影院數據失敗:', err);
+      } finally {
+        setCinemasLoading(false);
+      }
+    };
+    
+    fetchCinemas();
+  }, []);
   const selectedDate = dateTabs[selectedDateIdx].date;
   const selectedDateKey = formatDateKey(selectedDate);
 
   // 電影院搜尋過濾（名稱、縣市、行政區）
-  const filteredCinemas = CINEMAS.filter(c => {
+  const filteredCinemas = cinemas.filter(c => {
     const q = cinemaQuery.trim();
     if (!q) return true;
     return (
@@ -135,10 +219,10 @@ export default function ShowtimesPage() {
   const showtimesByCinema = React.useMemo(() => {
     const groups: Record<string, Array<{ time: string; hall: string; lang: string }>> = {};
     // 如果有選擇多個電影院，只顯示這些
-    const cinemas = selectedCinemas.length > 0
+    const selectedCinemasData = selectedCinemas.length > 0
       ? filteredCinemas.filter(c => selectedCinemas.includes(c.id))
       : [];
-    cinemas.forEach(c => {
+    selectedCinemasData.forEach(c => {
       const times = SHOWTIMES[c.id]?.[selectedDateKey] || [];
       if (times.length > 0) groups[c.id] = times;
     });
@@ -148,14 +232,27 @@ export default function ShowtimesPage() {
 
   return (
     <main className="flex flex-col items-center min-h-screen py-8 px-2 bg-black">
-      <div className="w-full max-w-lg flex flex-row items-center mb-4">
-        <Button variant="ghost" className="mr-2" onClick={() => window.location.href = "/"}>
-          ← 返回
-        </Button>
-        <img src={MOVIE.poster} alt={MOVIE.name} className="w-14 h-20 object-cover rounded-lg border border-neutral-800 shadow-sm mr-4" />
-        <div>
-          <div className="text-white text-lg font-bold mb-1">{MOVIE.name}</div>
-          <div className="text-neutral-400 text-xs">上映：{MOVIE.release}</div>
+      <div className="w-full max-w-lg flex mb-4">
+        <Link href="/" className="text-neutral-400 hover:text-white text-sm flex items-center gap-1 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          返回票房榜
+        </Link>
+      </div>
+      <div className="w-full max-w-lg flex flex-row gap-4 mb-8 items-start">
+        <img
+          src={movie.poster}
+          alt={movie.name}
+          className="w-24 h-36 object-cover rounded-lg border border-neutral-800 shadow-md"
+          style={{ background: "#222" }}
+        />
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold tracking-tight text-white mb-1">{movie.name}</h1>
+          <div className="text-neutral-400 text-sm mb-4">上映：{movie.release}</div>
+          <div className="text-sm text-neutral-300">
+            選擇電影院和日期來查看場次
+          </div>
         </div>
       </div>
       {/* Mapbox 地圖區塊 */}
@@ -171,7 +268,11 @@ export default function ShowtimesPage() {
           style={{ width: '100%', height: 320, borderRadius: 16 }}
           mapStyle="mapbox://styles/mapbox/dark-v11"
         >
-          {CINEMAS.map(cinema => (
+          {cinemasLoading ? (
+            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white">
+              載入電影院資料中...
+            </div>
+          ) : cinemas.map(cinema => (
             <Marker
               key={cinema.id}
               longitude={cinema.lng}
@@ -231,7 +332,7 @@ export default function ShowtimesPage() {
         {/* Portal tooltip */}
         {hoverCinemaId && hoverCinemaLngLat && mapRef.current && (() => {
           const map = mapRef.current.getMap ? mapRef.current.getMap() : mapRef.current;
-          const container = map && map.getContainer ? map.getContainer() : (map && map._container ? map._container : null);
+          const container = map && map.getContainer ? map.getContainer() : (map && (map as { _container?: HTMLElement })._container ? (map as { _container: HTMLElement })._container : null);
           if (!container) return null;
           const rect = container.getBoundingClientRect();
           const pt = map.project(hoverCinemaLngLat);
@@ -255,7 +356,7 @@ export default function ShowtimesPage() {
                 border: 'none'
               }}
             >
-              {CINEMAS.find(c => c.id === hoverCinemaId)?.name}
+              {cinemas.find(c => c.id === hoverCinemaId)?.name}
             </div>,
             document.body
           );
@@ -269,7 +370,11 @@ export default function ShowtimesPage() {
           className="mb-2 bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-500"
         />
         <div className="flex flex-wrap gap-2">
-          {filteredCinemas.map(c => (
+          {cinemasLoading ? (
+            <div className="w-full text-center py-4 text-neutral-400">載入電影院資料中...</div>
+          ) : filteredCinemas.length === 0 ? (
+            <div className="w-full text-center py-4 text-neutral-400">找不到符合條件的電影院</div>
+          ) : filteredCinemas.map(c => (
             <Button
               key={c.id}
               variant={selectedCinemas.includes(c.id) ? "default" : "outline"}
@@ -305,7 +410,7 @@ export default function ShowtimesPage() {
           <div className="text-neutral-500 text-center py-8">查無場次</div>
         ) : (
           Object.entries(showtimesByCinema).map(([cid, showtimes]) => {
-            const cinema = CINEMAS.find(c => c.id === cid);
+            const cinema = cinemas.find(c => c.id === cid);
             return (
               <div key={cid}>
                 <div className="text-white text-base font-semibold mb-2">{cinema?.name}</div>
