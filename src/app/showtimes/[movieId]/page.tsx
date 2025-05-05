@@ -31,6 +31,24 @@ interface Cinema {
   lng: number;
 }
 
+// 場次資料介面
+interface Showtime {
+  time: string;
+  movie_name: string;
+}
+
+interface ShowtimesByDate {
+  date: string;
+  label: string;
+  showtimes: Showtime[];
+}
+
+interface TheaterShowtimes {
+  theater_id: string;
+  theater_name: string;
+  showtimes_by_date: ShowtimesByDate[];
+}
+
 // 預設電影資料
 const DEFAULT_MOVIE: MovieInfo = {
   id: "default",
@@ -58,70 +76,7 @@ function formatDateKey(date: Date) {
   return date.toISOString().slice(0, 10); // yyyy-mm-dd
 }
 
-// 假場次資料（每個電影院每天不一樣時間）
-const SHOWTIMES: Record<string, Record<string, Array<{ time: string; hall: string; lang: string }>>> = {
-  cinemaA: {
-    [formatDateKey(today)]: [
-      { time: "13:00", hall: "1廳", lang: "國語" },
-      { time: "16:30", hall: "2廳", lang: "英語" },
-    ],
-    [formatDateKey(tomorrow)]: [
-      { time: "10:00", hall: "1廳", lang: "國語" },
-      { time: "19:00", hall: "2廳", lang: "英語" },
-    ],
-    [formatDateKey(dayAfterTomorrow)]: [
-      { time: "15:30", hall: "1廳", lang: "國語" },
-      { time: "21:00", hall: "2廳", lang: "英語" },
-    ],
-  },
-  cinemaB: {
-    [formatDateKey(today)]: [
-      { time: "12:00", hall: "3廳", lang: "國語" },
-      { time: "18:00", hall: "1廳", lang: "英語" },
-    ],
-    [formatDateKey(tomorrow)]: [
-      { time: "11:00", hall: "2廳", lang: "國語" },
-      { time: "20:00", hall: "3廳", lang: "英語" },
-    ],
-    [formatDateKey(dayAfterTomorrow)]: [
-      { time: "14:30", hall: "1廳", lang: "國語" },
-      { time: "22:00", hall: "2廳", lang: "英語" },
-    ],
-  },
-  cinemaC: {
-    [formatDateKey(today)]: [
-      { time: "15:10", hall: "2廳", lang: "國語" },
-    ],
-    [formatDateKey(tomorrow)]: [
-      { time: "16:30", hall: "1廳", lang: "國語" },
-    ],
-    [formatDateKey(dayAfterTomorrow)]: [
-      { time: "18:00", hall: "2廳", lang: "英語" },
-    ],
-  },
-  cinemaD: {
-    [formatDateKey(today)]: [
-      { time: "14:00", hall: "5廳", lang: "國語" },
-    ],
-    [formatDateKey(tomorrow)]: [
-      { time: "17:00", hall: "5廳", lang: "國語" },
-    ],
-    [formatDateKey(dayAfterTomorrow)]: [
-      { time: "20:00", hall: "5廳", lang: "國語" },
-    ],
-  },
-  cinemaE: {
-    [formatDateKey(today)]: [
-      { time: "19:00", hall: "1廳", lang: "英語" },
-    ],
-    [formatDateKey(tomorrow)]: [
-      { time: "21:00", hall: "1廳", lang: "國語" },
-    ],
-    [formatDateKey(dayAfterTomorrow)]: [
-      { time: "23:00", hall: "1廳", lang: "英語" },
-    ],
-  },
-};
+// 場次數據將從 API 獲取
 
 const MAPBOX_TOKEN = "pk.eyJ1Ijoiam9uYXN3aGl0ZSIsImEiOiJjbWEydDFwcWswMTdwMm1vaDFuNzcwa21qIn0.yYklARsM9Thk2vuygcDzXg";
 
@@ -135,6 +90,8 @@ export default function ShowtimesPage() {
   const [loading, setLoading] = useState(true);
   const [cinemas, setCinemas] = useState<Cinema[]>([]);
   const [cinemasLoading, setCinemasLoading] = useState(true);
+  const [showtimes, setShowtimes] = useState<TheaterShowtimes[]>([]);
+  const [showtimesLoading, setShowtimesLoading] = useState(true);
   const [selectedDateIdx, setSelectedDateIdx] = useState(0);
   const [selectedCinemas, setSelectedCinemas] = useState<string[]>([]);
   const [cinemaQuery, setCinemaQuery] = useState("");
@@ -201,6 +158,31 @@ export default function ShowtimesPage() {
     
     fetchCinemas();
   }, []);
+  
+  // 獲取場次資訊
+  useEffect(() => {
+    const fetchShowtimes = async () => {
+      if (!decodedMovieId) return;
+      
+      try {
+        setShowtimesLoading(true);
+        const response = await fetch(`http://localhost:4000/api/showtimes/movie/${encodeURIComponent(decodedMovieId)}`);
+        
+        if (!response.ok) {
+          throw new Error(`獲取場次數據失敗: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        setShowtimes(data);
+      } catch (err) {
+        console.error('獲取場次數據失敗:', err);
+      } finally {
+        setShowtimesLoading(false);
+      }
+    };
+    
+    fetchShowtimes();
+  }, [decodedMovieId]);
   const selectedDate = dateTabs[selectedDateIdx].date;
   const selectedDateKey = formatDateKey(selectedDate);
 
@@ -217,17 +199,56 @@ export default function ShowtimesPage() {
 
   // 場次 group by 電影院，依照選擇的日期
   const showtimesByCinema = React.useMemo(() => {
-    const groups: Record<string, Array<{ time: string; hall: string; lang: string }>> = {};
-    // 如果有選擇多個電影院，只顯示這些
+    const groups: Record<string, Array<{ time: string; hall?: string; lang?: string }>> = {};
+    
+    if (showtimesLoading || showtimes.length === 0 || cinemasLoading || cinemas.length === 0) {
+      return groups;
+    }
+    
+    // 選擇的電影院數據
     const selectedCinemasData = selectedCinemas.length > 0
-      ? filteredCinemas.filter(c => selectedCinemas.includes(c.id))
+      ? cinemas.filter(c => selectedCinemas.includes(c.id))
       : [];
-    selectedCinemasData.forEach(c => {
-      const times = SHOWTIMES[c.id]?.[selectedDateKey] || [];
-      if (times.length > 0) groups[c.id] = times;
+    
+    // 找到選擇的日期字符串
+    const selectedDate = dateTabs[selectedDateIdx].date;
+    const formattedDate = formatDateKey(selectedDate).replace(/-/g, "");
+    
+    // 如果沒有選擇電影院，則不顯示場次
+    if (selectedCinemasData.length === 0) {
+      return groups;
+    }
+    
+    // 對每個選擇的電影院
+    selectedCinemasData.forEach(cinema => {
+      // 尋找對應的場次數據（使用名稱匹配）
+      const theaterData = showtimes.find(t => {
+        // 清理名稱中的空格和其他差異
+        const cleanCinemaName = cinema.name.replace(/影城$|大戲院$|影城$|影城$|影院$|劇場$|影城$|影城$/, "").trim();
+        const cleanTheaterName = t.theater_name.replace(/影城$|大戲院$|影城$|影城$|影院$|劇場$|影城$|影城$/, "").trim();
+        
+        // 檢查名稱是否包含或被包含
+        return cleanCinemaName.includes(cleanTheaterName) || cleanTheaterName.includes(cleanCinemaName);
+      });
+      
+      if (theaterData) {
+        // 尋找符合日期的場次
+        const dateData = theaterData.showtimes_by_date.find(d => d.date === formattedDate);
+        if (dateData && dateData.showtimes.length > 0) {
+          // 將場次轉換為需要的格式
+          const formattedShowtimes = dateData.showtimes.map(s => ({
+            time: s.time,
+            hall: "", // ATMovies 沒有提供廳別信息
+            lang: "" // ATMovies 沒有提供語言信息
+          }));
+          
+          groups[cinema.id] = formattedShowtimes;
+        }
+      }
     });
+    
     return groups;
-  }, [selectedCinemas, filteredCinemas, selectedDateKey]);
+  }, [selectedCinemas, selectedDateIdx, showtimes, showtimesLoading, cinemas, cinemasLoading]);
 
 
   return (
@@ -419,8 +440,8 @@ export default function ShowtimesPage() {
                     <Card key={idx} className="bg-neutral-900 border border-neutral-800 rounded-xl shadow flex flex-row items-center px-4 py-3">
                       <div className="flex-1 flex flex-row gap-4 items-center">
                         <div className="text-white text-lg font-bold min-w-[40px]">{s.time}</div>
-                        <div className="text-neutral-300 text-sm min-w-[40px]">{s.hall}</div>
-                        <div className="text-neutral-400 text-sm">{s.lang}</div>
+                        {s.hall && <div className="text-neutral-300 text-sm min-w-[40px]">{s.hall}</div>}
+                        {s.lang && <div className="text-neutral-400 text-sm">{s.lang}</div>}
                       </div>
                     </Card>
                   ))}
