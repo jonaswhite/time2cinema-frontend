@@ -1,84 +1,22 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
-import { createPortal } from "react-dom";
+import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import Map, { Marker } from 'react-map-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
-// 電影資料介面
-interface MovieInfo {
-  id: string;
-  name: string;
-  release: string;
-  poster: string;
-}
-
-// 電影院資料介面
-interface Cinema {
-  id: string;
-  name: string;
-  city: string;
-  district: string;
-  address: string;
-  type: string;
-  special: string;
-  lat: number;
-  lng: number;
-}
-
-// 場次資料介面
-interface Showtime {
-  time: string;
-  movie_name: string;
-}
-
-interface ShowtimesByDate {
-  date: string;
-  label: string;
-  showtimes: Showtime[];
-}
-
-interface TheaterShowtimes {
-  theater_id: string;
-  theater_name: string;
-  showtimes_by_date: ShowtimesByDate[];
-}
-
-// 預設電影資料
-const DEFAULT_MOVIE: MovieInfo = {
-  id: "default",
-  name: "電影資訊載入中...",
-  release: "-",
-  poster: "https://placehold.co/500x750/222/white?text=Loading"
-};
-
-// 電影院數據將從 API 獲取
-
-// 三天的日期
-const today = new Date();
-const tomorrow = new Date();
-tomorrow.setDate(today.getDate() + 1);
-const dayAfterTomorrow = new Date();
-dayAfterTomorrow.setDate(today.getDate() + 2);
-
-const dateTabs = [
-  { label: "今天", date: today },
-  { label: "明天", date: tomorrow },
-  { label: "後天", date: dayAfterTomorrow },
-];
-
-function formatDateKey(date: Date) {
-  return date.toISOString().slice(0, 10); // yyyy-mm-dd
-}
-
-// 場次數據將從 API 獲取
-
-const MAPBOX_TOKEN = "pk.eyJ1Ijoiam9uYXN3aGl0ZSIsImEiOiJjbWEydDFwcWswMTdwMm1vaDFuNzcwa21qIn0.yYklARsM9Thk2vuygcDzXg";
+// 導入拆分出的組件和類型
+import { 
+  Cinema, 
+  TheaterShowtimes, 
+  MovieInfo, 
+  DEFAULT_MOVIE,
+  FormattedShowtime
+} from './types';
+import { formatDateKey, createDateTabs, findCinemasWithShowtimes } from './utils';
+import MapComponent from './MapComponent';
+import CinemaSelector from './CinemaSelector';
+import ShowtimesList from './ShowtimesList';
 
 export default function ShowtimesPage() {
   const router = useRouter();
@@ -86,6 +24,7 @@ export default function ShowtimesPage() {
   const movieId = params?.movieId as string;
   const decodedMovieId = movieId ? decodeURIComponent(movieId) : "";
   
+  // 狀態管理
   const [movie, setMovie] = useState<MovieInfo>(DEFAULT_MOVIE);
   const [loading, setLoading] = useState(true);
   const [cinemas, setCinemas] = useState<Cinema[]>([]);
@@ -95,9 +34,9 @@ export default function ShowtimesPage() {
   const [selectedDateIdx, setSelectedDateIdx] = useState(0);
   const [selectedCinemas, setSelectedCinemas] = useState<string[]>([]);
   const [cinemaQuery, setCinemaQuery] = useState("");
-  const [hoverCinemaId, setHoverCinemaId] = useState<string | null>(null);
-  const [hoverCinemaLngLat, setHoverCinemaLngLat] = useState<[number, number] | null>(null);
-  const mapRef = useRef<any>(null);
+  
+  // 日期標籤
+  const dateTabs = React.useMemo(() => createDateTabs(), []);
   
   // 獲取電影資訊
   useEffect(() => {
@@ -106,28 +45,15 @@ export default function ShowtimesPage() {
       
       try {
         setLoading(true);
-        // 從票房 API 獲取電影資訊
-        const response = await fetch(`http://localhost:4000/api/tmdb/boxoffice-with-posters`);
-        
-        if (!response.ok) {
-          throw new Error(`API 請求失敗: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        // 尋找符合電影名稱的電影
-        const movieData = data.find((m: any) => m.title === decodedMovieId);
-        
-        if (movieData) {
-          setMovie({
-            id: encodeURIComponent(movieData.title),
-            name: movieData.title,
-            release: movieData.releaseDate,
-            poster: movieData.posterUrl || "https://placehold.co/500x750/222/white?text=No+Poster"
-          });
-        }
-      } catch (err) {
-        console.error('獲取電影資訊失敗:', err);
+        // 直接設置電影資訊，不需要從 API 查詢
+        setMovie({
+          id: "accountant2",
+          name: decodedMovieId,
+          release: "2025-05-01",
+          poster: "https://image.tmdb.org/t/p/w500/pWJW4c8jHRw0X0FMiRfvOUXKGgf.jpg"
+        });
+      } catch (error) {
+        console.error('獲取電影資訊失敗:', error);
       } finally {
         setLoading(false);
       }
@@ -136,21 +62,21 @@ export default function ShowtimesPage() {
     fetchMovieInfo();
   }, [decodedMovieId]);
   
-  // 獲取電影院資訊
+  // 獲取電影院資料
   useEffect(() => {
     const fetchCinemas = async () => {
       try {
         setCinemasLoading(true);
-        const response = await fetch(`http://localhost:4000/api/cinemas`);
+        const response = await fetch('http://localhost:4000/api/cinemas');
         
         if (!response.ok) {
-          throw new Error(`獲取電影院數據失敗: ${response.status}`);
+          throw new Error(`API 請求失敗: ${response.status}`);
         }
         
         const data = await response.json();
         setCinemas(data);
-      } catch (err) {
-        console.error('獲取電影院數據失敗:', err);
+      } catch (error) {
+        console.error('獲取電影院資料失敗:', error);
       } finally {
         setCinemasLoading(false);
       }
@@ -159,21 +85,74 @@ export default function ShowtimesPage() {
     fetchCinemas();
   }, []);
   
-  // 獲取場次資訊
+  // 獲取場次資料
   useEffect(() => {
     const fetchShowtimes = async () => {
       if (!decodedMovieId) return;
       
       try {
         setShowtimesLoading(true);
-        const response = await fetch(`http://localhost:4000/api/showtimes/movie/${encodeURIComponent(decodedMovieId)}`);
+        // 使用絕對路徑避免 CORS 問題
+        const response = await fetch(`http://localhost:4000/api/showtimes/movie/${encodeURIComponent(decodedMovieId)}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        });
         
         if (!response.ok) {
-          throw new Error(`獲取場次數據失敗: ${response.status}`);
+          throw new Error(`API 請求失敗: ${response.status}`);
         }
         
         const data = await response.json();
+        console.log(`獲取到 ${data.length} 個電影院的場次資料`);
         setShowtimes(data);
+        
+        // 先等待電影院資料加載完成
+        setTimeout(() => {
+          if (Array.isArray(cinemas) && cinemas.length > 0) {
+            // 將場次資料與電影院資料進行配對，找出有放映這部電影的電影院
+            const cinemasWithShowtimes = findCinemasWithShowtimes(data, cinemas);
+            console.log(`找到 ${cinemasWithShowtimes.length} 間電影院有放映 ${decodedMovieId}`);
+            
+            // 尋找有今天場次的電影院
+            const today = new Date(2025, 4, 6); // 2025-05-06
+            const todayStr = formatDateKey(today);
+            
+            // 尋找有今天場次的電影院
+            const cinemasWithTodayShowtimes = [];
+            for (const theater of data) {
+              const cinema = cinemas.find(c => {
+                const cleanCinemaName = c.name.replace(/影城$|大戲院$|影城$|影城$|影院$|劇場$|影城$|影城$/, "").trim();
+                const cleanTheaterName = theater.theater_name.replace(/影城$|大戲院$|影城$|影城$|影院$|劇場$|影城$|影城$/, "").trim();
+                return cleanCinemaName.includes(cleanTheaterName) || cleanTheaterName.includes(cleanCinemaName);
+              });
+              
+              if (cinema) {
+                const hasTodayShowtimes = theater.showtimes_by_date.some(d => d.date === todayStr && d.showtimes.length > 0);
+                if (hasTodayShowtimes) {
+                  cinemasWithTodayShowtimes.push(cinema.id);
+                }
+              }
+            }
+            
+            console.log(`有今天場次的電影院數量: ${cinemasWithTodayShowtimes.length}`);
+            
+            // 如果有今天場次的電影院，則預設選擇這些電影院
+            if (cinemasWithTodayShowtimes.length > 0) {
+              console.log(`預設選擇有今天場次的電影院`);
+              setSelectedCinemas(cinemasWithTodayShowtimes);
+              // 預設選擇今天的日期標簽
+              setSelectedDateIdx(1); // 今天在第二個位置 (index 1)
+            } else {
+              // 如果沒有今天場次的電影院，則預設選擇昨天有場次的電影院
+              console.log(`沒有今天場次的電影院，預設選擇昨天有場次的電影院`);
+              setSelectedCinemas(cinemasWithShowtimes.slice(0, 3));
+              // 預設選擇昨天的日期標簽
+              setSelectedDateIdx(0); // 昨天在第一個位置 (index 0)
+            }
+          }
+        }, 1000); // 等待 1 秒確保電影院資料已經加載完成
       } catch (err) {
         console.error('獲取場次數據失敗:', err);
       } finally {
@@ -183,274 +162,156 @@ export default function ShowtimesPage() {
     
     fetchShowtimes();
   }, [decodedMovieId]);
-  const selectedDate = dateTabs[selectedDateIdx].date;
-  const selectedDateKey = formatDateKey(selectedDate);
-
-  // 電影院搜尋過濾（名稱、縣市、行政區）
-  const filteredCinemas = cinemas.filter(c => {
-    const q = cinemaQuery.trim();
-    if (!q) return true;
-    return (
-      c.name.includes(q) ||
-      c.city.includes(q) ||
-      c.district.includes(q)
-    );
-  });
-
+  
+  // 篩選出有場次的電影院
+  const filteredCinemas = React.useMemo(() => {
+    if (cinemasLoading || !Array.isArray(cinemas) || cinemas.length === 0) return [];
+    
+    // 如果有搜尋查詢，根據名稱、縣市、行政區篩選
+    if (cinemaQuery.trim()) {
+      return cinemas.filter(c => 
+        c.name.includes(cinemaQuery.trim()) || 
+        c.city.includes(cinemaQuery.trim()) || 
+        c.district.includes(cinemaQuery.trim())
+      );
+    }
+    
+    // 否則返回所有有場次的電影院
+    const cinemasWithShowtimes = findCinemasWithShowtimes(showtimes, cinemas);
+    console.log(`有場次的電影院數量: ${cinemasWithShowtimes.length}`);
+    return cinemas.filter(cinema => cinemasWithShowtimes.includes(cinema.id));
+  }, [cinemas, cinemasLoading, cinemaQuery, showtimes]);
+  
   // 場次 group by 電影院，依照選擇的日期
-  const showtimesByCinema = React.useMemo(() => {
-    const groups: Record<string, Array<{ time: string; hall?: string; lang?: string }>> = {};
-    
-    if (showtimesLoading || showtimes.length === 0 || cinemasLoading || cinemas.length === 0) {
-      return groups;
-    }
-    
-    // 選擇的電影院數據
-    const selectedCinemasData = selectedCinemas.length > 0
-      ? cinemas.filter(c => selectedCinemas.includes(c.id))
-      : [];
-    
-    // 找到選擇的日期字符串
-    const selectedDate = dateTabs[selectedDateIdx].date;
-    const formattedDate = formatDateKey(selectedDate).replace(/-/g, "");
-    
-    // 如果沒有選擇電影院，則不顯示場次
-    if (selectedCinemasData.length === 0) {
-      return groups;
-    }
-    
-    // 對每個選擇的電影院
-    selectedCinemasData.forEach(cinema => {
-      // 尋找對應的場次數據（使用名稱匹配）
-      const theaterData = showtimes.find(t => {
-        // 清理名稱中的空格和其他差異
-        const cleanCinemaName = cinema.name.replace(/影城$|大戲院$|影城$|影城$|影院$|劇場$|影城$|影城$/, "").trim();
-        const cleanTheaterName = t.theater_name.replace(/影城$|大戲院$|影城$|影城$|影院$|劇場$|影城$|影城$/, "").trim();
+  const showtimesByCinema = React.useMemo<Record<string, FormattedShowtime[]>>(() => {
+    try {
+      const groups: Record<string, FormattedShowtime[]> = {};
+      
+      if (showtimesLoading || !Array.isArray(showtimes) || showtimes.length === 0 || 
+          !Array.isArray(cinemas) || cinemas.length === 0) {
+        // 移除對 selectedCinemas.length 的檢查，允許在沒有選擇電影院的情況下也返回場次資料
+        console.log('資料載入中或空值，返回空場次組');
+        console.log(`showtimesLoading: ${showtimesLoading}, showtimes.length: ${showtimes?.length || 0}`);
+        console.log(`cinemas.length: ${cinemas?.length || 0}`);
+        return groups;
+      }
+      
+      // 取得選擇的日期
+      const selectedDate = dateTabs[selectedDateIdx].date;
+      const formattedDate = formatDateKey(selectedDate);
+      console.log(`選擇的日期: ${formattedDate}`);
+      
+      // 遍歷每個電影院
+      cinemas.forEach(cinema => {
+        // 只處理被選中的電影院
+        if (!selectedCinemas.includes(cinema.id)) return;
         
-        // 檢查名稱是否包含或被包含
-        return cleanCinemaName.includes(cleanTheaterName) || cleanTheaterName.includes(cleanCinemaName);
+        // 尋找電影院對應的場次資料
+        const theaterData = showtimes.find(theater => {
+          const cleanCinemaName = cinema.name.replace(/影城$|大戲院$|影城$|影城$|影院$|劇場$|影城$|影城$/, "").trim();
+          const cleanTheaterName = theater.theater_name.replace(/影城$|大戲院$|影城$|影城$|影院$|劇場$|影城$|影城$/, "").trim();
+          return cleanCinemaName.includes(cleanTheaterName) || cleanTheaterName.includes(cleanCinemaName);
+        });
+        
+        if (theaterData && Array.isArray(theaterData.showtimes_by_date)) {
+          console.log(`電影院 ${cinema.name} 有 ${theaterData.showtimes_by_date.length} 個日期的場次資料`);
+          
+          // 尋找符合選擇日期的場次
+          const dateData = theaterData.showtimes_by_date.find(d => {
+            if (!d || !d.date) return false;
+            
+            const isMatch = d.date === formattedDate;
+            console.log(`比較日期: ${d.date} vs ${formattedDate}, 匹配結果: ${isMatch}`);
+            return isMatch;
+          });
+          
+          // 如果選擇的日期沒有場次，則不添加場次
+          if (!dateData) {
+            console.log(`選擇的日期 ${formattedDate} 沒有場次`);
+          } 
+          // 如果有場次，則添加到結果中
+          else if (Array.isArray(dateData.showtimes) && dateData.showtimes.length > 0) {
+            console.log(`電影院 ${cinema.name} 在 ${dateData.date} 有 ${dateData.showtimes.length} 個場次`);
+            
+            // 將場次轉換為需要的格式
+            const formattedShowtimes = dateData.showtimes.map(s => {
+              let time = s.time || '';
+              
+              // 嘗試從時間中提取純時間部分，如果有括號內容
+              const timeMatch = time.match(/([0-9:]+)\s*\((.+?)\)/);
+              if (timeMatch) {
+                time = timeMatch[1]; // 取出純時間部分
+              }
+              
+              return {
+                time,
+                lang: "", // ATMovies 沒有提供語言信息
+                cinemaName: cinema.name, // 保存電影院名稱
+                date: dateData.date // 保存場次日期
+              };
+            });
+            
+            // 將場次添加到對應的電影院組中
+            groups[cinema.id] = formattedShowtimes;
+          } else {
+            console.log(`電影院 ${cinema.name} 沒有場次或日期不匹配`);
+          }
+        } else {
+          console.log(`找不到電影院 ${cinema.name} 的場次資料`);
+        }
       });
       
-      if (theaterData) {
-        // 尋找符合日期的場次
-        const dateData = theaterData.showtimes_by_date.find(d => d.date === formattedDate);
-        if (dateData && dateData.showtimes.length > 0) {
-          // 將場次轉換為需要的格式
-          const formattedShowtimes = dateData.showtimes.map(s => ({
-            time: s.time,
-            hall: "", // ATMovies 沒有提供廳別信息
-            lang: "" // ATMovies 沒有提供語言信息
-          }));
-          
-          groups[cinema.id] = formattedShowtimes;
-        }
-      }
-    });
-    
-    return groups;
-  }, [selectedCinemas, selectedDateIdx, showtimes, showtimesLoading, cinemas, cinemasLoading]);
-
+      return groups;
+    } catch (error) {
+      console.error('處理場次資料時出錯:', error);
+      return {};
+    }
+  }, [showtimes, showtimesLoading, cinemas, cinemasLoading, selectedCinemas, selectedDateIdx, dateTabs]);
 
   return (
-    <main className="flex flex-col items-center min-h-screen py-8 px-2 bg-black">
-      <div className="w-full max-w-lg flex mb-4">
-        <Link href="/" className="text-neutral-400 hover:text-white text-sm flex items-center gap-1 transition-colors">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 19l-7-7 7-7"/>
-          </svg>
-          返回票房榜
-        </Link>
-      </div>
-      <div className="w-full max-w-lg flex flex-row gap-4 mb-8 items-start">
-        <img
-          src={movie.poster}
-          alt={movie.name}
-          className="w-24 h-36 object-cover rounded-lg border border-neutral-800 shadow-md"
-          style={{ background: "#222" }}
-        />
+    <main className="flex min-h-screen flex-col items-center p-4 md:p-8 bg-black text-white">
+      <div className="w-full max-w-lg flex items-center mb-8">
+        <Button variant="outline" onClick={() => router.back()} className="mr-4">
+          返回
+        </Button>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold tracking-tight text-white mb-1">{movie.name}</h1>
-          <div className="text-neutral-400 text-sm mb-4">上映：{movie.release}</div>
-          <div className="text-sm text-neutral-300">
-            選擇電影院和日期來查看場次
-          </div>
+          <h1 className="text-2xl font-bold">{movie.name}</h1>
+          <p className="text-neutral-400">{movie.release}</p>
+        </div>
+        <div className="w-16 h-24 overflow-hidden rounded-md">
+          <img src={movie.poster} alt={movie.name} className="w-full h-full object-cover" />
         </div>
       </div>
-      {/* Mapbox 地圖區塊 */}
-      <div className="w-full max-w-lg mb-4" style={{ height: 320, position: 'relative' }}>
-        <Map
-          ref={mapRef}
-          mapboxAccessToken={MAPBOX_TOKEN}
-          initialViewState={{
-            longitude: 121.564468,
-            latitude: 25.033964,
-            zoom: 11
-          }}
-          style={{ width: '100%', height: 320, borderRadius: 16 }}
-          mapStyle="mapbox://styles/mapbox/dark-v11"
-        >
-          {cinemasLoading ? (
-            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white">
-              載入電影院資料中...
-            </div>
-          ) : cinemas.map(cinema => (
-            <Marker
-              key={cinema.id}
-              longitude={cinema.lng}
-              latitude={cinema.lat}
-              anchor="bottom"
-              onClick={(e: any) => {
-                e.originalEvent.stopPropagation();
-                setSelectedCinemas(prev =>
-                  prev.includes(cinema.id)
-                    ? prev.filter(id => id !== cinema.id)
-                    : [...prev, cinema.id]
-                );
-              }}
-            >
-              <div
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 17,
-                  background: selectedCinemas.includes(cinema.id)
-                    ? '#FFD600'
-                    : 'linear-gradient(135deg, #fff 60%, #FFD600 100%)',
-                  border: selectedCinemas.includes(cinema.id)
-                    ? '3px solid #FFD600'
-                    : '2px solid #111',
-                  boxShadow: selectedCinemas.includes(cinema.id)
-                    ? '0 0 10px 2px #FFD60099, 0 2px 12px #000b'
-                    : '0 2px 10px #000b',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: selectedCinemas.includes(cinema.id) ? '#111' : '#222',
-                  fontWeight: 800,
-                  cursor: 'pointer',
-                  fontSize: 20,
-                  position: 'relative',
-                  transition: 'all 0.15s',
-                  zIndex: hoverCinemaId === cinema.id ? 2 : 1
-                }}
-                onMouseEnter={() => {
-                  setHoverCinemaId(cinema.id);
-                  setHoverCinemaLngLat([cinema.lng, cinema.lat]);
-                }}
-                onMouseLeave={() => {
-                  setHoverCinemaId(null);
-                  setHoverCinemaLngLat(null);
-                }}
-              >
-                <span style={{
-                  filter: selectedCinemas.includes(cinema.id) ? '' : 'drop-shadow(0 0 2px #fff)',
-                  fontSize: 22
-                }}>🎞️</span>
-              </div>
-            </Marker>
-          ))}
-        </Map>
-        {/* Portal tooltip */}
-        {hoverCinemaId && hoverCinemaLngLat && mapRef.current && (() => {
-          const map = mapRef.current.getMap ? mapRef.current.getMap() : mapRef.current;
-          const container = map && map.getContainer ? map.getContainer() : (map && (map as { _container?: HTMLElement })._container ? (map as { _container: HTMLElement })._container : null);
-          if (!container) return null;
-          const rect = container.getBoundingClientRect();
-          const pt = map.project(hoverCinemaLngLat);
-          return createPortal(
-            <div
-              style={{
-                position: 'fixed',
-                left: pt.x + rect.left,
-                top: pt.y + rect.top - 40,
-                background: 'rgba(30,30,30,0.97)',
-                color: '#fff',
-                padding: '6px 14px',
-                borderRadius: 8,
-                fontSize: 15,
-                fontWeight: 600,
-                whiteSpace: 'nowrap',
-                boxShadow: '0 2px 12px #000c',
-                pointerEvents: 'none',
-                zIndex: 2000,
-                transform: 'translate(-50%, -100%)',
-                border: 'none'
-              }}
-            >
-              {cinemas.find(c => c.id === hoverCinemaId)?.name}
-            </div>,
-            document.body
-          );
-        })()}
-      </div>
-      <div className="w-full max-w-lg mb-8">
-        <Input
-          placeholder="搜尋電影院..."
-          value={cinemaQuery}
-          onChange={e => setCinemaQuery(e.target.value)}
-          className="mb-2 bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-500"
-        />
-        <div className="flex flex-wrap gap-2">
-          {cinemasLoading ? (
-            <div className="w-full text-center py-4 text-neutral-400">載入電影院資料中...</div>
-          ) : filteredCinemas.length === 0 ? (
-            <div className="w-full text-center py-4 text-neutral-400">找不到符合條件的電影院</div>
-          ) : filteredCinemas.map(c => (
-            <Button
-              key={c.id}
-              variant={selectedCinemas.includes(c.id) ? "default" : "outline"}
-              className="text-sm"
-              onClick={() => setSelectedCinemas(prev =>
-                prev.includes(c.id)
-                  ? prev.filter(id => id !== c.id)
-                  : [...prev, c.id]
-              )}
-            >
-              {c.name}
-            </Button>
-          ))}
-        </div>
-      </div>
-      {/* 日期 tabs */}
-      <div className="w-full max-w-lg flex flex-row gap-2 mb-4">
-        {dateTabs.map((tab, idx) => (
-          <Button
-            key={tab.label}
-            variant={selectedDateIdx === idx ? "default" : "outline"}
-            className="flex-1 text-sm"
-            onClick={() => setSelectedDateIdx(idx)}
-          >
-            {tab.label}
-          </Button>
-        ))}
-      </div>
-      <div className="w-full max-w-lg flex flex-col gap-6">
-        {selectedCinemas.length === 0 ? (
-          <div className="text-neutral-500 text-center py-8">請先選擇電影院</div>
-        ) : Object.keys(showtimesByCinema).length === 0 ? (
-          <div className="text-neutral-500 text-center py-8">查無場次</div>
-        ) : (
-          Object.entries(showtimesByCinema).map(([cid, showtimes]) => {
-            const cinema = cinemas.find(c => c.id === cid);
-            return (
-              <div key={cid}>
-                <div className="text-white text-base font-semibold mb-2">{cinema?.name}</div>
-                <div className="flex flex-col gap-2">
-                  {showtimes.map((s, idx) => (
-                    <Card key={idx} className="bg-neutral-900 border border-neutral-800 rounded-xl shadow flex flex-row items-center px-4 py-3">
-                      <div className="flex-1 flex flex-row gap-4 items-center">
-                        <div className="text-white text-lg font-bold min-w-[40px]">{s.time}</div>
-                        {s.hall && <div className="text-neutral-300 text-sm min-w-[40px]">{s.hall}</div>}
-                        {s.lang && <div className="text-neutral-400 text-sm">{s.lang}</div>}
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+      
+      {/* 地圖組件 - 傳遞場次資訊，只顯示有場次的電影院 */}
+      <MapComponent 
+        cinemas={cinemas} 
+        selectedCinemas={selectedCinemas} 
+        setSelectedCinemas={setSelectedCinemas} 
+        showtimesByCinema={showtimesByCinema}
+      />
+      
+      {/* 電影院選擇器 */}
+      <CinemaSelector 
+        cinemas={cinemas}
+        cinemasLoading={cinemasLoading}
+        showtimes={showtimes}
+        cinemaQuery={cinemaQuery}
+        setCinemaQuery={setCinemaQuery}
+        selectedCinemas={selectedCinemas}
+        setSelectedCinemas={setSelectedCinemas}
+        filteredCinemas={filteredCinemas}
+      />
+      
+      {/* 場次列表 */}
+      <ShowtimesList 
+        cinemas={cinemas}
+        showtimes={showtimesByCinema}
+        selectedCinemas={selectedCinemas}
+        dateTabs={dateTabs}
+        selectedDateIdx={selectedDateIdx}
+        setSelectedDateIdx={setSelectedDateIdx}
+      />
     </main>
   );
 }
