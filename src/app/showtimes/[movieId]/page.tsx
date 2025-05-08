@@ -156,8 +156,13 @@ export default function ShowtimesPage() {
       
       try {
         setShowtimesLoading(true);
-        // 使用絕對路徑避免 CORS 問題
-        const response = await fetch(`${API_URL}/api/showtimes/movie/${encodeURIComponent(decodedMovieId)}`, {
+        // 獲取今天的日期，格式為 YYYY-MM-DD
+        const today = new Date();
+        const todayStr = formatDateKey(today);
+        console.log(`今天日期: ${todayStr}，查詢電影: ${decodedMovieId}`);
+        
+        // 使用正確的 API 路徑，將日期作為查詢參數
+        const response = await fetch(`${API_URL}/api/showtimes/movie/${encodeURIComponent(decodedMovieId)}?date=${todayStr}`, {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json'
