@@ -1,3 +1,7 @@
+# Time2Cinema
+
+Time2Cinema 是一個提供台灣電影時刻查詢、地圖瀏覽與推薦的網站，前端採用 Next.js 開發。
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started

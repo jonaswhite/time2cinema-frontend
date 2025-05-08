@@ -2,9 +2,12 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import API_URL from '@/config/api';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { RefreshCw } from "lucide-react";
 
 // 票房資料介面 - 精簡版，符合後端 API 回傳格式
 interface BoxOfficeMovie {
@@ -59,42 +62,59 @@ export default function Home() {
   const [boxOfficeData, setBoxOfficeData] = useState<DisplayMovie[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   
   // 從後端 API 獲取票房資料
-  useEffect(() => {
-    const fetchBoxOffice = async () => {
-      try {
+  const fetchBoxOffice = async (forceRefresh = false) => {
+    try {
+      if (forceRefresh) {
+        setRefreshing(true);
+      } else {
         setLoading(true);
-        // 使用新的 TMDB API 來獲取帶有海報的電影資料
-        const response = await fetch('http://localhost:4000/api/tmdb/boxoffice-with-posters');
-        
-        if (!response.ok) {
-          throw new Error(`API 請求失敗: ${response.status}`);
-        }
-        
-        const data: BoxOfficeMovie[] = await response.json();
-
-        // 將後端資料轉換為前端顯示格式
-        const displayData: DisplayMovie[] = data.map((movie, index) => ({
-          rank: index + 1,
-          title: movie.title,
-          weeklySales: formatTickets(movie.totalSales),
-          totalSales: formatTickets(movie.totalSales),
-          releaseDate: movie.releaseDate || '-',
-          poster: movie.posterUrl || posterMap[movie.title] || "https://placehold.co/500x750/222/white?text=No+Poster"
-        }));
-        setBoxOfficeData(displayData);
-        setError(null);
-      } catch (err) {
-        console.error('獲取票房資料失敗:', err);
-        setError('獲取票房資料失敗，請稍後再試');
-        // 使用備用資料
-        setBoxOfficeData([]);
-      } finally {
-        setLoading(false);
       }
-    };
-    
+      
+      // 使用新的 TMDB API 來獲取帶有海報的電影資料
+      const url = forceRefresh 
+        ? `${API_URL}/api/tmdb/boxoffice-with-posters?refresh=true`
+        : `${API_URL}/api/tmdb/boxoffice-with-posters`;
+      
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`API 請求失敗: ${response.status}`);
+      }
+      
+      const data: BoxOfficeMovie[] = await response.json();
+
+      // 將後端資料轉換為前端顯示格式
+      const displayData: DisplayMovie[] = data.map((movie, index) => ({
+        rank: index + 1,
+        title: movie.title,
+        weeklySales: formatTickets(movie.totalSales),
+        totalSales: formatTickets(movie.totalSales),
+        releaseDate: movie.releaseDate || '-',
+        poster: movie.posterUrl || posterMap[movie.title] || "https://placehold.co/500x750/222/white?text=No+Poster"
+      }));
+      setBoxOfficeData(displayData);
+      setError(null);
+    } catch (err) {
+      console.error('獲取票房資料失敗:', err);
+      setError('獲取票房資料失敗，請稍後再試');
+      // 使用備用資料
+      setBoxOfficeData([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+  
+  // 強制更新快取
+  const handleRefresh = () => {
+    fetchBoxOffice(true);
+  };
+  
+  // 初始載入資料
+  useEffect(() => {
     fetchBoxOffice();
   }, []);
   
@@ -105,7 +125,18 @@ export default function Home() {
 
   return (
     <main className="flex flex-col items-center min-h-screen py-8 px-2 bg-black">
-      <h1 className="text-2xl font-bold mb-4 tracking-tight text-white">本週台灣電影票房榜</h1>
+      <div className="flex items-center justify-between w-full max-w-lg mb-4">
+        <h1 className="text-2xl font-bold tracking-tight text-white">本週台灣電影票房榜</h1>
+        <Button 
+          variant="outline" 
+          onClick={handleRefresh} 
+          disabled={refreshing || loading}
+          className="text-xs h-8 px-3 bg-neutral-900 border-neutral-700 text-white hover:bg-neutral-800 hover:text-white"
+        >
+          <RefreshCw className={`h-3 w-3 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? '更新中' : '更新資料'}
+        </Button>
+      </div>
       <Input
         type="text"
         placeholder="搜尋電影名稱..."

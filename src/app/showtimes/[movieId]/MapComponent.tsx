@@ -6,6 +6,8 @@ import Map, { Marker } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { MAPBOX_TOKEN } from './utils';
 import { Cinema } from './types';
+// 引入 React Icons 中的電影院圖標
+import { MdLocalMovies, MdMovie } from 'react-icons/md';
 
 interface MapComponentProps {
   cinemas: Cinema[];
@@ -13,13 +15,16 @@ interface MapComponentProps {
   setSelectedCinemas: React.Dispatch<React.SetStateAction<string[]>>;
   // 新增 showtimesByCinema 參數，用於判斷哪些電影院有場次
   showtimesByCinema?: Record<string, any[]>;
+  // 用戶位置
+  userLocation?: {lat: number, lng: number} | null;
 }
 
 const MapComponent: React.FC<MapComponentProps> = ({ 
   cinemas, 
   selectedCinemas, 
   setSelectedCinemas,
-  showtimesByCinema = {} // 預設為空物件
+  showtimesByCinema = {}, // 預設為空物件
+  userLocation = null
 }) => {
   const [hoverCinemaId, setHoverCinemaId] = useState<string | null>(null);
   const [hoverCinemaLngLat, setHoverCinemaLngLat] = useState<[number, number] | null>(null);
@@ -72,6 +77,21 @@ const MapComponent: React.FC<MapComponentProps> = ({
         style={{ width: '100%', height: '100%' }}
         mapStyle="mapbox://styles/mapbox/dark-v11"
       >
+        {/* 顯示用戶位置 */}
+        {userLocation && (
+          <Marker
+            longitude={userLocation.lng}
+            latitude={userLocation.lat}
+          >
+            <div className="z-50">
+              <div className="w-6 h-6 rounded-full bg-blue-500 border-2 border-white flex items-center justify-center shadow-lg">
+                <div className="w-2 h-2 rounded-full bg-white"></div>
+              </div>
+            </div>
+          </Marker>
+        )}
+        
+        {/* 顯示電影院位置 */}
         {cinemasWithShowtimes.map(cinema => (
           <Marker
             key={cinema.id}
@@ -93,50 +113,30 @@ const MapComponent: React.FC<MapComponentProps> = ({
               setHoverCinemaLngLat(null);
             }}
           >
-            <div
-              className={`w-3 h-3 rounded-full cursor-pointer transition-all ${
-                selectedCinemas.includes(cinema.id)
-                  ? 'bg-yellow-500 scale-125'
-                  : 'bg-white'
-              }`}
-            />
+            <div className="relative">
+              {/* 電影院名稱小文字 */}
+              <div 
+                className={`absolute -bottom-5 left-1/2 transform -translate-x-1/2 text-white text-xs font-medium z-30 whitespace-nowrap transition-opacity ${hoverCinemaId === cinema.id ? 'opacity-100' : 'opacity-70'}`}
+                style={{ textShadow: '0px 0px 3px #000, 0px 0px 3px #000, 0px 0px 3px #000' }}
+              >
+                {cinema.name}
+              </div>
+              
+              {/* 電影院圖標 */}
+              <div 
+                className="cursor-pointer transition-all transform hover:scale-110 flex items-center justify-center bg-white rounded-full p-1"
+              >
+                {selectedCinemas.includes(cinema.id) ? (
+                  <MdMovie className="text-yellow-500" size={20} />
+                ) : (
+                  <MdLocalMovies className="text-gray-500" size={20} />
+                )}
+              </div>
+            </div>
           </Marker>
         ))}
       </Map>
-      {/* 懸停提示 */}
-      {hoverCinemaId && hoverCinemaLngLat && (() => {
-        const cinema = cinemasWithShowtimes.find(c => c.id === hoverCinemaId);
-        if (!cinema || !mapRef.current) return null;
-        
-        const map = mapRef.current.getMap();
-        const pt = map.project(hoverCinemaLngLat);
-        const rect = map.getContainer().getBoundingClientRect();
-        
-        return createPortal(
-          <div
-            style={{
-              position: 'fixed',
-              left: pt.x + rect.left,
-              top: pt.y + rect.top - 40,
-              background: 'rgba(30,30,30,0.97)',
-              color: '#fff',
-              padding: '6px 14px',
-              borderRadius: 8,
-              fontSize: 15,
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-              boxShadow: '0 2px 12px #000c',
-              pointerEvents: 'none',
-              zIndex: 2000,
-              transform: 'translate(-50%, -100%)',
-              border: 'none'
-            }}
-          >
-            {cinema.name}
-          </div>,
-          document.body
-        );
-      })()}
+      {/* 電影院懸停提示已移至每個標記內部 */}
     </div>
   );
 };
