@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import API_URL from "@/config/api";
 
 // 導入拆分出的組件和類型
 import { 
@@ -79,7 +80,7 @@ export default function ShowtimesPage() {
       try {
         setLoading(true);
         // 從 boxoffice-with-posters API 獲取電影海報
-        const response = await fetch('http://localhost:4000/api/tmdb/boxoffice-with-posters');
+        const response = await fetch(`${API_URL}/api/tmdb/boxoffice-with-posters`);
         
         if (!response.ok) {
           throw new Error(`API 請求失敗: ${response.status}`);
@@ -130,7 +131,7 @@ export default function ShowtimesPage() {
     const fetchCinemas = async () => {
       try {
         setCinemasLoading(true);
-        const response = await fetch('http://localhost:4000/api/cinemas');
+        const response = await fetch(`${API_URL}/api/cinemas`);
         
         if (!response.ok) {
           throw new Error(`API 請求失敗: ${response.status}`);
@@ -156,7 +157,7 @@ export default function ShowtimesPage() {
       try {
         setShowtimesLoading(true);
         // 使用絕對路徑避免 CORS 問題
-        const response = await fetch(`http://localhost:4000/api/showtimes/movie/${encodeURIComponent(decodedMovieId)}`, {
+        const response = await fetch(`${API_URL}/api/showtimes/movie/${encodeURIComponent(decodedMovieId)}`, {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json'
