@@ -10,6 +10,14 @@ const nextConfig: NextConfig = {
     // 在生產環境構建時忽略 TypeScript 錯誤
     ignoreBuildErrors: true,
   },
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'https://time2cinema-backend.onrender.com/api/:path*',
+      },
+    ];
+  },
 };
 
 export default nextConfig;
