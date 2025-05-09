@@ -9,13 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
 
-// 票房資料介面 - 精簡版，符合後端 API 回傳格式
+// 票房資料介面 - 符合後端 API 回傳格式
 interface BoxOfficeMovie {
-  title: string;
-  releaseDate: string;
-  totalGross: number;
-  totalSales: number;
-  posterUrl: string | null;
+  movie_id: string; // 電影名稱
+  rank: number; // 排名
+  tickets: number; // 票數
+  totalsales: number | null; // 累計票數
+  release_date?: string; // 上映日
+  week_start_date?: string; // 週開始日期
 }
 
 // 前端顯示用的電影資料介面
@@ -48,8 +49,8 @@ const posterMap: Record<string, string> = {
 
 
 // 格式化票房數字
-const formatTickets = (tickets: number): string => {
-  if (!tickets || isNaN(tickets)) return '-';
+const formatTickets = (tickets: number | null): string => {
+  if (tickets === null || !tickets || isNaN(tickets)) return '-';
   if (tickets >= 10000) {
     return `${(tickets / 10000).toFixed(1)}萬張`;
   }
@@ -73,10 +74,10 @@ export default function Home() {
         setLoading(true);
       }
       
-      // 使用新的 TMDB API 來獲取帶有海報的電影資料
+      // 直接使用 boxoffice API 來獲取票房資料
       const url = forceRefresh 
-        ? `${API_URL}/api/tmdb/boxoffice-with-posters?refresh=true`
-        : `${API_URL}/api/tmdb/boxoffice-with-posters`;
+        ? `${API_URL}/api/boxoffice?refresh=true`
+        : `${API_URL}/api/boxoffice`;
       
       const response = await fetch(url);
       
@@ -84,16 +85,16 @@ export default function Home() {
         throw new Error(`API 請求失敗: ${response.status}`);
       }
       
-      const data: BoxOfficeMovie[] = await response.json();
+      const data = await response.json();
 
       // 將後端資料轉換為前端顯示格式
-      const displayData: DisplayMovie[] = data.map((movie, index) => ({
-        rank: index + 1,
-        title: movie.title,
-        weeklySales: formatTickets(movie.totalSales),
-        totalSales: formatTickets(movie.totalSales),
-        releaseDate: movie.releaseDate || '-',
-        poster: movie.posterUrl || posterMap[movie.title] || "https://placehold.co/500x750/222/white?text=No+Poster"
+      const displayData: DisplayMovie[] = data.map((movie: BoxOfficeMovie) => ({
+        rank: movie.rank,
+        title: movie.movie_id,
+        weeklySales: formatTickets(movie.tickets),
+        totalSales: formatTickets(movie.totalsales),
+        releaseDate: movie.release_date || '-',
+        poster: posterMap[movie.movie_id] || "https://placehold.co/500x750/222/white?text=No+Poster"
       }));
       setBoxOfficeData(displayData);
       setError(null);
