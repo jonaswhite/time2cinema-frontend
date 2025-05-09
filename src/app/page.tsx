@@ -177,7 +177,7 @@ export default function Home() {
                   <h2 className="text-white text-base font-medium tracking-wide mb-1 line-clamp-1">
                     {movie.title}
                   </h2>
-                  <div className="text-neutral-400 text-xs">上映：{movie.releaseDate}</div>
+                  <div className="text-neutral-400 text-xs">上映日：{movie.releaseDate}</div>
                 </div>
                 <div className="text-neutral-400 text-xs">累計票數：{movie.totalSales}</div>
               </CardContent>
