@@ -94,9 +94,16 @@ export default function Home() {
         weeklySales: formatTickets(movie.tickets),
         totalSales: formatTickets(movie.totalsales),
         releaseDate: movie.release_date || '-',
-        poster: posterMap[movie.movie_id] || "https://placehold.co/500x750/222/white?text=No+Poster"
+        poster: "https://placehold.co/500x750/222/white?text=Loading", // 預設海報，後面會更新
+        id: movie.movie_id // 用於路由導航
       }));
+      
+      // 設置票房資料
       setBoxOfficeData(displayData);
+      
+      // 獲取電影海報
+      await fetchMoviePosters(displayData.map(movie => movie.title));
+      
       setError(null);
     } catch (err) {
       console.error('獲取票房資料失敗:', err);
@@ -106,6 +113,49 @@ export default function Home() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  };
+  
+  // 獲取電影海報
+  const fetchMoviePosters = async (movieTitles: string[]) => {
+    try {
+      // 使用 TMDB API 獲取電影海報
+      const response = await fetch(`${API_URL}/api/tmdb/posters`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ movieTitles })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`獲取海報失敗: ${response.status}`);
+      }
+      
+      const posterData = await response.json();
+      
+      // 更新電影海報
+      setBoxOfficeData(prevData => {
+        return prevData.map(movie => {
+          const posterInfo = posterData.find((p: { movieTitle: string, posterUrl: string | null }) => 
+            p.movieTitle === movie.title
+          );
+          
+          return {
+            ...movie,
+            poster: posterInfo?.posterUrl || posterMap[movie.title] || "https://placehold.co/500x750/222/white?text=No+Poster"
+          };
+        });
+      });
+    } catch (err) {
+      console.error('獲取電影海報失敗:', err);
+      // 如果海報獲取失敗，使用預設海報
+      setBoxOfficeData(prevData => {
+        return prevData.map(movie => ({
+          ...movie,
+          poster: posterMap[movie.title] || "https://placehold.co/500x750/222/white?text=No+Poster"
+        }));
+      });
     }
   };
   
