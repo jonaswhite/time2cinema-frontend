@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // 票房資料介面 - 符合後端 API 回傳格式
 interface BoxOfficeMovie {
@@ -17,16 +18,26 @@ interface BoxOfficeMovie {
   totalsales: number | null; // 累計票數
   release_date?: string; // 上映日
   week_start_date?: string; // 週開始日期
+  poster_path?: string | null; // 海報路徑
+  runtime?: number | null; // 片長（分鐘）
+}
+
+// 上映中電影介面
+interface NowShowingMovie {
+  title: string; // 電影名稱
+  releaseDate: string | null; // 上映日期
+  posterUrl: string | null; // 海報 URL
+  runtime: number | null; // 片長（分鐘）
 }
 
 // 前端顯示用的電影資料介面
 interface DisplayMovie {
-  rank: number;
+  rank?: number; // 只有票房榜有排名
   title: string;
-  weeklySales: string;
-  totalSales: string;
+  weeklySales?: string; // 只有票房榜有週票數
   releaseDate: string;
   poster: string;
+  runtime?: number | null; // 片長（分鐘）
   // 用於路由導航的 ID
   id?: string;
 }
@@ -46,8 +57,6 @@ const posterMap: Record<string, string> = {
   "超能力家族": "https://image.tmdb.org/t/p/w500/9v2rU5FzzeU9yM54oVwWQzD1g0g.jpg",
 };
 
-
-
 // 格式化票房數字
 const formatTickets = (tickets: number | null): string => {
   if (tickets === null || !tickets || isNaN(tickets)) return '-';
@@ -59,12 +68,16 @@ const formatTickets = (tickets: number | null): string => {
 
 export default function Home() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState("box-office"); // 預設顯示「本週票房」標籤
   const [query, setQuery] = useState("");
   const [boxOfficeData, setBoxOfficeData] = useState<DisplayMovie[]>([]);
+  const [nowShowingData, setNowShowingData] = useState<DisplayMovie[]>([]);
   const [loading, setLoading] = useState(true);
+  const [nowShowingLoading, setNowShowingLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [nowShowingError, setNowShowingError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  
+
   // 從後端 API 獲取票房資料
   const fetchBoxOffice = async (forceRefresh = false) => {
     try {
@@ -73,18 +86,18 @@ export default function Home() {
       } else {
         setLoading(true);
       }
-      
+
       // 直接使用 boxoffice API 來獲取票房資料
       const url = forceRefresh 
         ? `${API_URL}/api/boxoffice?refresh=true`
         : `${API_URL}/api/boxoffice`;
-      
+
       const response = await fetch(url);
-      
+
       if (!response.ok) {
         throw new Error(`API 請求失敗: ${response.status}`);
       }
-      
+
       const data = await response.json();
 
       // 將後端資料轉換為前端顯示格式
@@ -92,151 +105,247 @@ export default function Home() {
         rank: movie.rank,
         title: movie.movie_id,
         weeklySales: formatTickets(movie.tickets),
-        totalSales: formatTickets(movie.totalsales),
-        releaseDate: movie.release_date || '-',
-        poster: "https://placehold.co/500x750/222/white?text=Loading", // 預設海報，後面會更新
-        id: movie.movie_id // 用於路由導航
+        releaseDate: movie.release_date || "未知",
+        poster: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : (posterMap[movie.movie_id] || "https://placehold.co/400x600/222/444?text=No+Poster"),
+        runtime: movie.runtime || null,
+        id: movie.movie_id
       }));
-      
+
       // 設置票房資料
       setBoxOfficeData(displayData);
-      
-      // 獲取電影海報
-      await fetchMoviePosters(displayData.map(movie => movie.title));
-      
+
       setError(null);
     } catch (err) {
       console.error('獲取票房資料失敗:', err);
       setError('獲取票房資料失敗，請稍後再試');
-      // 使用備用資料
-      setBoxOfficeData([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
-  
-  // 獲取電影海報
-  const fetchMoviePosters = async (movieTitles: string[]) => {
+
+  // 從後端 API 獲取上映中電影資料
+  const fetchNowShowingMovies = async () => {
     try {
-      // 使用 TMDB API 獲取電影海報
-      const response = await fetch(`${API_URL}/api/tmdb/posters`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ movieTitles })
-      });
-      
+      setNowShowingLoading(true);
+
+      const response = await fetch(`${API_URL}/api/movies/now-showing`);
+
       if (!response.ok) {
-        throw new Error(`獲取海報失敗: ${response.status}`);
+        throw new Error(`API 請求失敗: ${response.status}`);
       }
-      
-      const posterData = await response.json();
-      
-      // 更新電影海報
-      setBoxOfficeData(prevData => {
-        return prevData.map(movie => {
-          const posterInfo = posterData.find((p: { movieTitle: string, posterUrl: string | null }) => 
-            p.movieTitle === movie.title
-          );
-          
-          return {
-            ...movie,
-            poster: posterInfo?.posterUrl || posterMap[movie.title] || "https://placehold.co/500x750/222/white?text=No+Poster"
-          };
-        });
-      });
+
+      const data = await response.json();
+
+      // 將後端資料轉換為前端顯示格式
+      const displayData: DisplayMovie[] = data.map((movie: NowShowingMovie) => ({
+        title: movie.title,
+        releaseDate: movie.releaseDate || "未知",
+        poster: movie.posterUrl || posterMap[movie.title] || "https://placehold.co/400x600/222/444?text=No+Poster",
+        runtime: movie.runtime,
+        id: movie.title
+      }));
+
+      // 設置上映中電影資料
+      setNowShowingData(displayData);
+      setNowShowingError(null);
     } catch (err) {
-      console.error('獲取電影海報失敗:', err);
-      // 如果海報獲取失敗，使用預設海報
-      setBoxOfficeData(prevData => {
-        return prevData.map(movie => ({
-          ...movie,
-          poster: posterMap[movie.title] || "https://placehold.co/500x750/222/white?text=No+Poster"
-        }));
-      });
+      console.error('獲取上映中電影失敗:', err);
+      setNowShowingError('獲取上映中電影失敗，請稍後再試');
+    } finally {
+      setNowShowingLoading(false);
     }
   };
-  
+
+  // 創建一個可重用的電影卡片元件
+  const MovieCard = ({ movie }: { movie: DisplayMovie }) => (
+    <Card
+      className="bg-neutral-900 border border-neutral-800 rounded-xl shadow flex flex-row items-center relative overflow-hidden min-h-[96px] px-3 py-2 cursor-pointer hover:bg-neutral-800 transition-colors"
+      onClick={() => router.push(`/showtimes/${encodeURIComponent(movie.title)}`)}
+    >
+      {movie.rank && movie.rank <= 10 && (
+        <Badge
+          className="absolute left-3 top-3 bg-white/10 text-white font-light px-2 py-0.5 text-[11px] rounded-full backdrop-blur"
+          variant="secondary"
+        >
+          NO.{movie.rank}
+        </Badge>
+      )}
+      <img
+        src={movie.poster}
+        alt={movie.title}
+        className="w-16 h-24 object-cover rounded-lg border border-neutral-800 shadow-sm mr-4"
+        style={{ background: "#222" }}
+      />
+      <CardContent className="flex flex-col justify-between h-24 items-start flex-1 p-0 py-0.5">
+        <div>
+          <h2 className="text-white text-base font-medium tracking-wide mb-1 line-clamp-1">
+            {movie.title}
+          </h2>
+          <div className="text-neutral-400 text-xs">上映日：{movie.releaseDate}</div>
+        </div>
+        <div className="text-neutral-400 text-xs">
+          {movie.runtime ? `片長：${movie.runtime} 分鐘` : ''}
+        </div>
+      </CardContent>
+    </Card>
+  );
+
   // 強制更新快取
   const handleRefresh = () => {
     fetchBoxOffice(true);
+    fetchNowShowingMovies();
   };
-  
+
   // 初始載入資料
   useEffect(() => {
     fetchBoxOffice();
+    fetchNowShowingMovies();
   }, []);
-  
+
   // 根據搜尋關鍵字過濾電影
-  const filtered = boxOfficeData.filter((movie) =>
+  const filteredBoxOffice = boxOfficeData.filter((movie) =>
+    movie.title.toLowerCase().includes(query.toLowerCase())
+  );
+
+  const filteredNowShowing = nowShowingData.filter((movie) =>
     movie.title.toLowerCase().includes(query.toLowerCase())
   );
 
   return (
     <main className="flex flex-col items-center min-h-screen py-8 px-2 bg-black">
       <div className="flex items-center justify-between w-full max-w-lg mb-4">
-        <h1 className="text-2xl font-bold tracking-tight text-white">本週台灣電影票房榜</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-white">Time2Cinema</h1>
         <Button 
           variant="outline" 
           onClick={handleRefresh} 
-          disabled={refreshing || loading}
+          disabled={refreshing || loading || nowShowingLoading}
           className="text-xs h-8 px-3 bg-neutral-900 border-neutral-700 text-white hover:bg-neutral-800 hover:text-white"
         >
           <RefreshCw className={`h-3 w-3 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
           {refreshing ? '更新中' : '更新資料'}
         </Button>
       </div>
+
       <Input
         type="text"
         placeholder="搜尋電影名稱..."
         value={query}
         onChange={e => setQuery(e.target.value)}
-        className="max-w-xs mb-6 mx-auto bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-500 focus-visible:ring-1 focus-visible:ring-primary"
+        className="max-w-xs mb-4 mx-auto bg-neutral-900 border-neutral-700 text-white placeholder:text-neutral-500 focus-visible:ring-1 focus-visible:ring-primary"
       />
-      <div className="w-full max-w-lg flex flex-col gap-4 mx-auto">
-        {loading ? (
-          <div className="text-neutral-400 text-center py-8 animate-pulse">載入中...</div>
-        ) : error ? (
-          <div className="text-red-400 text-center py-8">{error}</div>
-        ) : filtered.length === 0 ? (
-          <div className="text-neutral-500 text-center py-8">查無電影</div>
-        ) : (
-          filtered.map((movie) => (
-            <Card
-              key={movie.rank}
-              className="bg-neutral-900 border border-neutral-800 rounded-xl shadow flex flex-row items-center relative overflow-hidden min-h-[96px] px-3 py-2 cursor-pointer hover:bg-neutral-800 transition-colors"
-              onClick={() => router.push(`/showtimes/${encodeURIComponent(movie.title)}`)}
+
+      {!query && (
+        <Tabs 
+          defaultValue="box-office" 
+          value={activeTab} 
+          onValueChange={setActiveTab}
+          className="w-full max-w-lg mb-6"
+        >
+          <TabsList className="grid w-full grid-cols-2 bg-neutral-900 border border-neutral-800">
+            <TabsTrigger 
+              value="box-office" 
+              className="data-[state=active]:bg-neutral-700 data-[state=active]:text-white data-[state=inactive]:text-neutral-500 font-medium"
             >
-              {movie.rank <= 10 && (
-                <Badge
-                  className="absolute left-3 top-3 bg-white/10 text-white font-light px-2 py-0.5 text-[11px] rounded-full backdrop-blur"
-                  variant="secondary"
-                >
-                  NO.{movie.rank}
-                </Badge>
-              )}
-              <img
-                src={movie.poster}
-                alt={movie.title}
-                className="w-16 h-24 object-cover rounded-lg border border-neutral-800 shadow-sm mr-4"
-                style={{ background: "#222" }}
-              />
-              <CardContent className="flex flex-col justify-between h-24 items-start flex-1 p-0 py-0.5">
-                <div>
-                  <h2 className="text-white text-base font-medium tracking-wide mb-1 line-clamp-1">
-                    {movie.title}
-                  </h2>
-                  <div className="text-neutral-400 text-xs">上映日：{movie.releaseDate}</div>
-                </div>
-                <div className="text-neutral-400 text-xs">累計票數：{movie.totalSales}</div>
-              </CardContent>
-            </Card>
-          ))
+              本週票房
+            </TabsTrigger>
+            <TabsTrigger 
+              value="now-showing" 
+              className="data-[state=active]:bg-neutral-700 data-[state=active]:text-white data-[state=inactive]:text-neutral-500 font-medium"
+            >
+              上映中
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      )}
+
+      <div className="w-full max-w-lg flex flex-col gap-4 mx-auto">
+        {query ? (
+          // 搜尋模式：合併顯示所有符合搜尋條件的電影
+          <>
+            {(loading || nowShowingLoading) ? (
+              <div className="text-neutral-400 text-center py-4 animate-pulse">載入中...</div>
+            ) : (error || nowShowingError) ? (
+              <div className="text-red-400 text-center py-4">{error || nowShowingError}</div>
+            ) : (filteredBoxOffice.length > 0 || filteredNowShowing.length > 0) ? (
+              // 合併兩個列表並去除重複電影
+              <>
+                {/* 創建一個電影標題的集合來追蹤重複項 */}
+                {(() => {
+                  const movieTitles = new Set<string>();
+                  const combinedMovies: DisplayMovie[] = [];
+                  
+                  // 創建一個幫助函數，檢查標題是否相似（忽略空格和大小寫）
+                  const isSimilarTitle = (title1: string, title2: string): boolean => {
+                    const normalized1 = title1.toLowerCase().replace(/\s+/g, '');
+                    const normalized2 = title2.toLowerCase().replace(/\s+/g, '');
+                    return normalized1 === normalized2;
+                  };
+                  
+                  // 先加入票房榜電影
+                  filteredBoxOffice.forEach(movie => {
+                    // 檢查是否已經有相似標題的電影
+                    const hasSimilarTitle = Array.from(movieTitles).some(title => 
+                      isSimilarTitle(title, movie.title)
+                    );
+                    
+                    if (!hasSimilarTitle) {
+                      movieTitles.add(movie.title);
+                      combinedMovies.push(movie);
+                    }
+                  });
+                  
+                  // 再加入上映中電影（如果不重複）
+                  filteredNowShowing.forEach(movie => {
+                    // 檢查是否已經有相似標題的電影
+                    const hasSimilarTitle = Array.from(movieTitles).some(title => 
+                      isSimilarTitle(title, movie.title)
+                    );
+                    
+                    if (!hasSimilarTitle) {
+                      movieTitles.add(movie.title);
+                      combinedMovies.push(movie);
+                    }
+                  });
+                  
+                  return combinedMovies.map(movie => (
+                    <MovieCard key={movie.title} movie={movie} />
+                  ));
+                })()} 
+              </>
+            ) : (
+              <div className="text-neutral-500 text-center py-8">查無電影</div>
+            )}
+          </>
+        ) : activeTab === "box-office" ? (
+          // 本週票房內容
+          loading ? (
+            <div className="text-neutral-400 text-center py-8 animate-pulse">載入中...</div>
+          ) : error ? (
+            <div className="text-red-400 text-center py-8">{error}</div>
+          ) : filteredBoxOffice.length === 0 ? (
+            <div className="text-neutral-500 text-center py-8">查無電影</div>
+          ) : (
+            filteredBoxOffice.map((movie) => (
+              <MovieCard key={movie.rank} movie={movie} />
+            ))
+          )
+        ) : (
+          // 上映中內容
+          nowShowingLoading ? (
+            <div className="text-neutral-400 text-center py-8 animate-pulse">載入中...</div>
+          ) : nowShowingError ? (
+            <div className="text-red-400 text-center py-8">{nowShowingError}</div>
+          ) : filteredNowShowing.length === 0 ? (
+            <div className="text-neutral-500 text-center py-8">查無電影</div>
+          ) : (
+            filteredNowShowing.map((movie) => (
+              <MovieCard key={movie.title} movie={movie} />
+            ))
+          )
         )}
       </div>
-      <p className="mt-6 text-neutral-600 text-xs tracking-wide">資料來源：台灣電影票房統計 API</p>
+      <p className="mt-6 text-neutral-600 text-xs tracking-wide">資料來源：Time2Cinema API</p>
     </main>
   );
 }
