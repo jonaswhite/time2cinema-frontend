@@ -46,6 +46,11 @@ const MapComponent: React.FC<MapComponentProps> = ({
 
   // 計算有場次的電影院的中心點作為地圖初始位置
   const center = React.useMemo(() => {
+    // 如果有用戶位置，優先使用用戶位置作為中心點
+    if (userLocation) {
+      return { lat: userLocation.lat, lng: userLocation.lng };
+    }
+    
     if (!cinemasWithShowtimes || cinemasWithShowtimes.length === 0) {
       return { lat: 25.0330, lng: 121.5654 }; // 台北市中心
     }
@@ -62,7 +67,18 @@ const MapComponent: React.FC<MapComponentProps> = ({
       lat: sumLat / validCinemas.length,
       lng: sumLng / validCinemas.length
     };
-  }, [cinemasWithShowtimes]);
+  }, [cinemasWithShowtimes, userLocation]);
+
+  // 當用戶位置變化時，重新定位地圖
+  React.useEffect(() => {
+    if (userLocation && mapRef.current) {
+      mapRef.current.flyTo({
+        center: [userLocation.lng, userLocation.lat],
+        zoom: 13,
+        duration: 2000
+      });
+    }
+  }, [userLocation]);
 
   return (
     <div className="w-full max-w-lg h-[300px] mb-8 rounded-xl overflow-hidden border border-neutral-800">

@@ -606,7 +606,7 @@ export default function ShowtimesPage() {
   return (
     <main className="flex min-h-screen flex-col items-center p-4 md:p-8 bg-black text-white">
       <div className="w-full max-w-lg flex items-center mb-8">
-        <Button variant="outline" onClick={() => router.back()} className="mr-4">
+        <Button variant="outline" onClick={() => router.push('/')} className="mr-4">
           返回
         </Button>
         <div className="flex-1">
