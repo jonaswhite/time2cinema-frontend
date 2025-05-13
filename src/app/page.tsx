@@ -108,19 +108,29 @@ export default function Home() {
   };
 
   // 獲取海報 URL 的輔助函數
-  const getPosterUrl = (movieTitle: string, defaultPoster?: string | null): string | null => {
-    // 如果有直接匹配的海報，則使用它
-    if (defaultPoster) return defaultPoster;
+  const getPosterUrl = (movieTitle: string | null | undefined, defaultPoster?: string | null): string | null => {
+    // 確保 movieTitle 是字符串且非空
+    if (typeof movieTitle !== 'string' || !movieTitle) {
+      return defaultPoster || null;
+    }
     
-    // 如果在 posterMap 中有完全匹配的條目，則使用它
-    if (posterMap[movieTitle]) return posterMap[movieTitle];
-    
-    // 嘗試在 posterMap 中查找相似的電影標題
-    for (const [title, url] of Object.entries(posterMap)) {
-      if (isSimilarTitle(title, movieTitle)) {
-        console.log(`找到相似電影標題匹配: ${movieTitle} ≈ ${title}`);
-        return url;
+    try {
+      // 如果有直接匹配的海報，則使用它
+      if (defaultPoster) return defaultPoster;
+      
+      // 如果在 posterMap 中有完全匹配的條目，則使用它
+      if (posterMap[movieTitle]) return posterMap[movieTitle];
+      
+      // 嘗試在 posterMap 中查找相似的電影標題
+      for (const [title, url] of Object.entries(posterMap)) {
+        if (isSimilarTitle(title, movieTitle)) {
+          console.log(`找到相似電影標題匹配: ${movieTitle} ≈ ${title}`);
+          return url;
+        }
       }
+    } catch (error) {
+      console.error('Error getting poster URL:', error);
+      return defaultPoster || null;
     }
     
     // 如果沒有找到匹配，返回 null
@@ -362,17 +372,24 @@ export default function Home() {
     };
 
     // 嘗試從本地映射表獲取海報，如果 movie.poster 為 null
-    const getPosterFromLocalMap = (title: string) => {
-      // 先在本地映射表中尋找完全匹配
-      if (posterMap[title]) {
-        return posterMap[title];
-      }
+    const getPosterFromLocalMap = (title: string | null | undefined) => {
+      // 確保 title 是字符串且非空
+      if (typeof title !== 'string' || !title) return null;
       
-      // 再尋找相似的標題
-      for (const [mapTitle, url] of Object.entries(posterMap)) {
-        if (isSimilarTitle(mapTitle, title)) {
-          return url;
+      try {
+        // 先在本地映射表中尋找完全匹配
+        if (posterMap[title]) {
+          return posterMap[title];
         }
+        
+        // 再尋找相似的標題
+        for (const [mapTitle, url] of Object.entries(posterMap)) {
+          if (isSimilarTitle(mapTitle, title)) {
+            return url;
+          }
+        }
+      } catch (error) {
+        console.error('Error getting poster from local map:', error);
       }
       
       return null;
