@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // 票房資料介面 - 符合後端 API 回傳格式
 interface BoxOfficeMovie {
@@ -81,6 +82,27 @@ export default function Home() {
   // 從後端 API 獲取票房資料
   const fetchBoxOffice = async (forceRefresh = false) => {
     try {
+      // 如果不是強制刷新且有快取資料，則使用快取資料
+      if (!forceRefresh) {
+        const cachedData = localStorage.getItem('boxOfficeData');
+        const cachedTimestamp = localStorage.getItem('boxOfficeTimestamp');
+        
+        if (cachedData && cachedTimestamp) {
+          const parsedData = JSON.parse(cachedData);
+          const timestamp = parseInt(cachedTimestamp, 10);
+          const now = Date.now();
+          
+          // 如果快取時間在 30 分鐘內，直接使用快取資料
+          if (now - timestamp < 30 * 60 * 1000 && parsedData.length > 0) {
+            console.log('使用本地快取的票房資料');
+            setBoxOfficeData(parsedData);
+            setError(null);
+            setLoading(false);
+            return;
+          }
+        }
+      }
+      
       if (forceRefresh) {
         setRefreshing(true);
       } else {
@@ -113,6 +135,10 @@ export default function Home() {
 
       // 設置票房資料
       setBoxOfficeData(displayData);
+      
+      // 保存到本地快取
+      localStorage.setItem('boxOfficeData', JSON.stringify(displayData));
+      localStorage.setItem('boxOfficeTimestamp', Date.now().toString());
 
       setError(null);
     } catch (err) {
@@ -125,11 +151,37 @@ export default function Home() {
   };
 
   // 從後端 API 獲取上映中電影資料
-  const fetchNowShowingMovies = async () => {
+  const fetchNowShowingMovies = async (forceRefresh = false) => {
     try {
+      // 如果不是強制刷新且有快取資料，則使用快取資料
+      if (!forceRefresh) {
+        const cachedData = localStorage.getItem('nowShowingData');
+        const cachedTimestamp = localStorage.getItem('nowShowingTimestamp');
+        
+        if (cachedData && cachedTimestamp) {
+          const parsedData = JSON.parse(cachedData);
+          const timestamp = parseInt(cachedTimestamp, 10);
+          const now = Date.now();
+          
+          // 如果快取時間在 30 分鐘內，直接使用快取資料
+          if (now - timestamp < 30 * 60 * 1000 && parsedData.length > 0) {
+            console.log('使用本地快取的上映中電影資料');
+            setNowShowingData(parsedData);
+            setNowShowingError(null);
+            setNowShowingLoading(false);
+            return;
+          }
+        }
+      }
+      
       setNowShowingLoading(true);
-
-      const response = await fetch(`${API_URL}/api/movies/now-showing`);
+      
+      // 確保使用正確的 API 路徑
+      const url = forceRefresh 
+        ? `${API_URL}/api/movies/now-showing?refresh=true`
+        : `${API_URL}/api/movies/now-showing`;
+        
+      const response = await fetch(url);
 
       if (!response.ok) {
         throw new Error(`API 請求失敗: ${response.status}`);
@@ -148,6 +200,11 @@ export default function Home() {
 
       // 設置上映中電影資料
       setNowShowingData(displayData);
+      
+      // 保存到本地快取
+      localStorage.setItem('nowShowingData', JSON.stringify(displayData));
+      localStorage.setItem('nowShowingTimestamp', Date.now().toString());
+      
       setNowShowingError(null);
     } catch (err) {
       console.error('獲取上映中電影失敗:', err);
@@ -194,13 +251,18 @@ export default function Home() {
   // 強制更新快取
   const handleRefresh = () => {
     fetchBoxOffice(true);
-    fetchNowShowingMovies();
+    fetchNowShowingMovies(true);
   };
 
   // 初始載入資料
   useEffect(() => {
-    fetchBoxOffice();
-    fetchNowShowingMovies();
+    // 添加客戶端檢查
+    const isClient = typeof window !== 'undefined';
+    
+    if (isClient) {
+      fetchBoxOffice();
+      fetchNowShowingMovies();
+    }
   }, []);
 
   // 根據搜尋關鍵字過濾電影
@@ -264,7 +326,19 @@ export default function Home() {
           // 搜尋模式：合併顯示所有符合搜尋條件的電影
           <>
             {(loading || nowShowingLoading) ? (
-              <div className="text-neutral-400 text-center py-4 animate-pulse">載入中...</div>
+              // 骨架屏代替簡單的載入中文字
+              Array(3).fill(0).map((_, index) => (
+                <Card key={index} className="bg-neutral-900 border border-neutral-800 rounded-xl shadow flex flex-row items-center relative overflow-hidden min-h-[96px] px-3 py-2">
+                  <Skeleton className="w-16 h-24 rounded-lg bg-neutral-800" />
+                  <CardContent className="flex flex-col justify-between h-24 items-start flex-1 p-0 py-0.5 ml-4">
+                    <div className="w-full">
+                      <Skeleton className="h-5 w-3/4 bg-neutral-800 mb-1" />
+                      <Skeleton className="h-3 w-1/2 bg-neutral-800" />
+                    </div>
+                    <Skeleton className="h-3 w-1/3 bg-neutral-800" />
+                  </CardContent>
+                </Card>
+              ))
             ) : (error || nowShowingError) ? (
               <div className="text-red-400 text-center py-4">{error || nowShowingError}</div>
             ) : (filteredBoxOffice.length > 0 || filteredNowShowing.length > 0) ? (
@@ -320,7 +394,19 @@ export default function Home() {
         ) : activeTab === "box-office" ? (
           // 本週票房內容
           loading ? (
-            <div className="text-neutral-400 text-center py-8 animate-pulse">載入中...</div>
+            // 骨架屏代替簡單的載入中文字
+            Array(5).fill(0).map((_, index) => (
+              <Card key={index} className="bg-neutral-900 border border-neutral-800 rounded-xl shadow flex flex-row items-center relative overflow-hidden min-h-[96px] px-3 py-2">
+                <Skeleton className="w-16 h-24 rounded-lg bg-neutral-800" />
+                <CardContent className="flex flex-col justify-between h-24 items-start flex-1 p-0 py-0.5 ml-4">
+                  <div className="w-full">
+                    <Skeleton className="h-5 w-3/4 bg-neutral-800 mb-1" />
+                    <Skeleton className="h-3 w-1/2 bg-neutral-800" />
+                  </div>
+                  <Skeleton className="h-3 w-1/3 bg-neutral-800" />
+                </CardContent>
+              </Card>
+            ))
           ) : error ? (
             <div className="text-red-400 text-center py-8">{error}</div>
           ) : filteredBoxOffice.length === 0 ? (
@@ -333,7 +419,19 @@ export default function Home() {
         ) : (
           // 上映中內容
           nowShowingLoading ? (
-            <div className="text-neutral-400 text-center py-8 animate-pulse">載入中...</div>
+            // 骨架屏代替簡單的載入中文字
+            Array(5).fill(0).map((_, index) => (
+              <Card key={index} className="bg-neutral-900 border border-neutral-800 rounded-xl shadow flex flex-row items-center relative overflow-hidden min-h-[96px] px-3 py-2">
+                <Skeleton className="w-16 h-24 rounded-lg bg-neutral-800" />
+                <CardContent className="flex flex-col justify-between h-24 items-start flex-1 p-0 py-0.5 ml-4">
+                  <div className="w-full">
+                    <Skeleton className="h-5 w-3/4 bg-neutral-800 mb-1" />
+                    <Skeleton className="h-3 w-1/2 bg-neutral-800" />
+                  </div>
+                  <Skeleton className="h-3 w-1/3 bg-neutral-800" />
+                </CardContent>
+              </Card>
+            ))
           ) : nowShowingError ? (
             <div className="text-red-400 text-center py-8">{nowShowingError}</div>
           ) : filteredNowShowing.length === 0 ? (
