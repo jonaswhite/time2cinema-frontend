@@ -13,34 +13,42 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 // 票房資料介面 - 符合後端 API 回傳格式
 interface BoxOfficeMovie {
-  movie_id: string; // 電影名稱
+  id: number; // 電影 ID
+  title: string; // 電影標題
+  original_title: string | null; // 原始標題
   rank: number; // 排名
   tickets: number; // 票數
   totalsales: number | null; // 累計票數
-  release_date?: string; // 上映日
-  week_start_date?: string; // 週開始日期
-  poster_path?: string | null; // 海報路徑
-  runtime?: number | null; // 片長（分鐘）
-}
-
-// 上映中電影介面
-interface NowShowingMovie {
-  title: string; // 電影名稱
-  releaseDate: string | null; // 上映日期
+  release_date: string | null; // 上映日
+  week_start_date: string; // 週開始日期
   posterUrl: string | null; // 海報 URL
   runtime: number | null; // 片長（分鐘）
+  tmdb_id: number | null; // TMDB ID
+}
+
+// 上映中電影介面 - 與票房資料介面統一
+interface NowShowingMovie {
+  id: number; // 電影 ID
+  title: string; // 電影標題
+  original_title: string | null; // 原始標題
+  release_date: string | null; // 上映日期
+  posterUrl: string | null; // 海報 URL
+  runtime: number | null; // 片長（分鐘）
+  tmdb_id: number | null; // TMDB ID
 }
 
 // 前端顯示用的電影資料介面
 interface DisplayMovie {
   rank?: number; // 只有票房榜有排名
   title: string;
+  original_title?: string | null; // 原始標題
   weeklySales?: string; // 只有票房榜有週票數
   releaseDate: string;
-  poster: string;
+  poster: string | null;
   runtime?: number | null; // 片長（分鐘）
-  // 用於路由導航的 ID
   id?: string;
+  isLoadingPoster?: boolean; // 是否正在加載海報
+  tmdb_id?: number | null; // TMDB ID
 }
 
 // 電影海報映射表（中英文片名都支援）
@@ -56,6 +64,11 @@ const posterMap: Record<string, string> = {
   "天才少女": "https://image.tmdb.org/t/p/w500/1m1r3wPz65Dy7W5dDzrQJqZy6lT.jpg",
   "時空旅人": "https://image.tmdb.org/t/p/w500/7Zr0y5lXW9XyQ5bHq6QyJ1Q0A0t.jpg",
   "超能力家族": "https://image.tmdb.org/t/p/w500/9v2rU5FzzeU9yM54oVwWQzD1g0g.jpg",
+  // 添加「獵金遊戲」的所有可能變體
+  "獵金遊戲": "https://image.tmdb.org/t/p/w500/bZCn9RaWvNhFXXrjEEvLDHtvOJy.jpg",
+  "獵金遊戲：無路可逃": "https://image.tmdb.org/t/p/w500/bZCn9RaWvNhFXXrjEEvLDHtvOJy.jpg",
+  "The Roundup: No Way Out": "https://image.tmdb.org/t/p/w500/bZCn9RaWvNhFXXrjEEvLDHtvOJy.jpg",
+  "The Roundup": "https://image.tmdb.org/t/p/w500/bZCn9RaWvNhFXXrjEEvLDHtvOJy.jpg",
 };
 
 // 格式化票房數字
@@ -78,6 +91,41 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [nowShowingError, setNowShowingError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  // 創建一個幫助函數，檢查標題是否相似（忽略空格和大小寫）
+  const isSimilarTitle = (title1: string | null | undefined, title2: string | null | undefined): boolean => {
+    // 確保兩個標題都是字符串且非空
+    if (typeof title1 !== 'string' || typeof title2 !== 'string' || !title1 || !title2) return false;
+    
+    try {
+      const normalized1 = title1.toLowerCase().replace(/\s+/g, '');
+      const normalized2 = title2.toLowerCase().replace(/\s+/g, '');
+      return normalized1 === normalized2;
+    } catch (error) {
+      console.error('Error comparing titles:', error);
+      return false;
+    }
+  };
+
+  // 獲取海報 URL 的輔助函數
+  const getPosterUrl = (movieTitle: string, defaultPoster?: string | null): string | null => {
+    // 如果有直接匹配的海報，則使用它
+    if (defaultPoster) return defaultPoster;
+    
+    // 如果在 posterMap 中有完全匹配的條目，則使用它
+    if (posterMap[movieTitle]) return posterMap[movieTitle];
+    
+    // 嘗試在 posterMap 中查找相似的電影標題
+    for (const [title, url] of Object.entries(posterMap)) {
+      if (isSimilarTitle(title, movieTitle)) {
+        console.log(`找到相似電影標題匹配: ${movieTitle} ≈ ${title}`);
+        return url;
+      }
+    }
+    
+    // 如果沒有找到匹配，返回 null
+    return null;
+  };
 
   // 從後端 API 獲取票房資料
   const fetchBoxOffice = async (forceRefresh = false) => {
@@ -122,20 +170,24 @@ export default function Home() {
 
       const data = await response.json();
 
-      // 將後端資料轉換為前端顯示格式
+      // 將後端資料轉換為前端顯示格式，直接使用後端返回的 posterUrl
       const displayData: DisplayMovie[] = data.map((movie: BoxOfficeMovie) => ({
         rank: movie.rank,
-        title: movie.movie_id,
+        title: movie.title,
         weeklySales: formatTickets(movie.tickets),
         releaseDate: movie.release_date || "未知",
-        poster: movie.poster_path ? `https://image.tmdb.org/t/p/w500${movie.poster_path}` : (posterMap[movie.movie_id] || "https://placehold.co/400x600/222/444?text=No+Poster"),
+        poster: movie.posterUrl || null, // 直接使用後端返回的 posterUrl
         runtime: movie.runtime || null,
-        id: movie.movie_id
+        id: movie.id.toString(),
+        isLoadingPoster: movie.posterUrl ? false : true // 如果有 posterUrl 則不需要加載
       }));
-
+      
       // 設置票房資料
       setBoxOfficeData(displayData);
       
+      // 開始獲取海報
+      fetchPosters(displayData);
+
       // 保存到本地快取
       localStorage.setItem('boxOfficeData', JSON.stringify(displayData));
       localStorage.setItem('boxOfficeTimestamp', Date.now().toString());
@@ -189,17 +241,21 @@ export default function Home() {
 
       const data = await response.json();
 
-      // 將後端資料轉換為前端顯示格式
+      // 將後端資料轉換為前端顯示格式，直接使用後端返回的 posterUrl
       const displayData: DisplayMovie[] = data.map((movie: NowShowingMovie) => ({
         title: movie.title,
-        releaseDate: movie.releaseDate || "未知",
-        poster: movie.posterUrl || posterMap[movie.title] || "https://placehold.co/400x600/222/444?text=No+Poster",
+        releaseDate: movie.release_date || "未知",
+        poster: movie.posterUrl || null, // 直接使用後端返回的 posterUrl
         runtime: movie.runtime,
-        id: movie.title
+        id: movie.id.toString(),
+        isLoadingPoster: movie.posterUrl ? false : true // 如果有 posterUrl 則不需要加載
       }));
 
       // 設置上映中電影資料
       setNowShowingData(displayData);
+      
+      // 開始獲取海報
+      fetchPosters(displayData);
       
       // 保存到本地快取
       localStorage.setItem('nowShowingData', JSON.stringify(displayData));
@@ -214,9 +270,141 @@ export default function Home() {
     }
   };
 
+  // 獲取電影海報
+  const fetchPosters = async (movies: DisplayMovie[]) => {
+    try {
+      // 為每部電影獲取海報
+      const updatedMovies = [...movies];
+      
+      // 使用 Promise.all 並行獲取所有海報
+      await Promise.all(movies.map(async (movie, index) => {
+        try {
+          // 先嘗試使用本地映射表
+          let posterUrl = null;
+          
+          // 1. 先在本地映射表中尋找
+          if (posterMap[movie.title]) {
+            posterUrl = posterMap[movie.title];
+            console.log(`從本地映射表找到海報: ${movie.title}`);
+          } else {
+            // 2. 尋找相似的標題
+            for (const [title, url] of Object.entries(posterMap)) {
+              if (isSimilarTitle(title, movie.title)) {
+                posterUrl = url;
+                console.log(`從本地映射表找到相似海報: ${movie.title} ≈ ${title}`);
+                break;
+              }
+            }
+            
+            // 3. 如果本地映射表中沒有，則使用 API
+            if (!posterUrl) {
+              try {
+                const url = `${API_URL}/api/tmdb/poster/${encodeURIComponent(movie.title)}${movie.releaseDate && movie.releaseDate !== "未知" ? `?releaseDate=${movie.releaseDate}` : ''}`;
+                console.log(`請求海報 API: ${url}`);
+                const response = await fetch(url);
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  posterUrl = data.posterUrl;
+                  console.log(`從 API 獲取到海報: ${movie.title}, URL: ${posterUrl}`);
+                }
+              } catch (error) {
+                console.error(`獲取電影 ${movie.title} 的海報時出錯:`, error);
+              }
+            }
+          }
+          
+          // 4. 更新電影海報
+          updatedMovies[index] = {
+            ...updatedMovies[index],
+            poster: posterUrl || "https://placehold.co/400x600/222/444?text=No+Poster", // 使用預設海報
+            isLoadingPoster: false
+          };
+          
+          // 立即更新狀態，這樣海報會在獲取後立即顯示
+          if (movies === boxOfficeData) {
+            setBoxOfficeData([...updatedMovies]);
+          } else if (movies === nowShowingData) {
+            setNowShowingData([...updatedMovies]);
+          }
+        } catch (err) {
+          console.error(`獲取電影 ${movie.title} 的海報時出錯:`, err);
+          // 標記為加載完成但海報為 null
+          updatedMovies[index] = {
+            ...updatedMovies[index],
+            poster: "https://placehold.co/400x600/222/444?text=No+Poster", // 使用預設海報
+            isLoadingPoster: false
+          };
+        }
+      }));
+      
+      // 最終更新狀態
+      if (movies === boxOfficeData) {
+        setBoxOfficeData(updatedMovies);
+        // 更新本地快取
+        localStorage.setItem('boxOfficeData', JSON.stringify(updatedMovies));
+      } else if (movies === nowShowingData) {
+        setNowShowingData(updatedMovies);
+        // 更新本地快取
+        localStorage.setItem('nowShowingData', JSON.stringify(updatedMovies));
+      }
+    } catch (err) {
+      console.error('獲取海報時出錯:', err);
+    }
+  };
+
   // 創建一個可重用的電影卡片元件
-  const MovieCard = ({ movie }: { movie: DisplayMovie }) => (
+  const MovieCard = ({ movie }: { movie: DisplayMovie }) => {
+    // 檢查 URL 是否為有效的圖片網址
+    const isValidImageUrl = (url: string | null | undefined): boolean => {
+      return !!url && typeof url === 'string' && url.trim() !== '' && 
+        (url.startsWith('http://') || url.startsWith('https://'));
+    };
+
+    // 嘗試從本地映射表獲取海報，如果 movie.poster 為 null
+    const getPosterFromLocalMap = (title: string) => {
+      // 先在本地映射表中尋找完全匹配
+      if (posterMap[title]) {
+        return posterMap[title];
+      }
+      
+      // 再尋找相似的標題
+      for (const [mapTitle, url] of Object.entries(posterMap)) {
+        if (isSimilarTitle(mapTitle, title)) {
+          return url;
+        }
+      }
+      
+      return null;
+    };
+    
+    // 確保無論如何都有一個預設圖片
+    const DEFAULT_POSTER = "https://placehold.co/400x600/222/444?text=No+Poster";
+    let posterUrl: string = DEFAULT_POSTER;
+    
+    // 詳細記錄 movie.poster 的值，幫助 debug
+    console.log(`電影 ${movie.title} 的 poster 值:`, movie.poster, 
+      `類型: ${typeof movie.poster}`, 
+      `有效性: ${isValidImageUrl(movie.poster)}`);
+    
+    // 優先使用 movie.poster，但必須是有效的圖片 URL
+    if (isValidImageUrl(movie.poster)) {
+      console.log(`電影 ${movie.title} 使用原始海報: ${movie.poster}`);
+      posterUrl = movie.poster as string;
+    } else {
+      // 如果 movie.poster 無效，嘗試從本地映射表獲取
+      const localPoster: string | null = getPosterFromLocalMap(movie.title);
+      if (isValidImageUrl(localPoster)) {
+        console.log(`電影 ${movie.title} 從本地映射表獲取海報: ${localPoster}`);
+        posterUrl = localPoster as string;
+      } else {
+        console.log(`電影 ${movie.title} 沒有有效海報，使用預設圖片`);
+      }
+    }
+    
+    return (
     <Card
+      key={movie.id || movie.title}
       className="bg-neutral-900 border border-neutral-800 rounded-xl shadow flex flex-row items-center relative overflow-hidden min-h-[96px] px-3 py-2 cursor-pointer hover:bg-neutral-800 transition-colors"
       onClick={() => router.push(`/showtimes/${encodeURIComponent(movie.title)}`)}
     >
@@ -228,12 +416,36 @@ export default function Home() {
           NO.{movie.rank}
         </Badge>
       )}
-      <img
-        src={movie.poster}
-        alt={movie.title}
-        className="w-16 h-24 object-cover rounded-lg border border-neutral-800 shadow-sm mr-4"
-        style={{ background: "#222" }}
-      />
+      <div className="relative w-16 h-24 bg-gray-200 rounded-lg overflow-hidden mr-4 flex-shrink-0">
+        {posterUrl ? (
+          <img 
+            src={posterUrl}
+            alt={movie.title} 
+            className="w-full h-full object-cover"
+            onError={(e) => {
+              console.warn(`電影 ${movie.title} 圖片載入失敗: ${posterUrl}`);
+              e.currentTarget.onerror = null; // 防止無限循環
+              e.currentTarget.src = "https://placehold.co/400x600/222/444?text=No+Poster";
+            }}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            {movie.isLoadingPoster ? (
+              <div className="animate-pulse">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-8 h-8 text-gray-400">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+                </svg>
+              </div>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-8 h-8 text-gray-400">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+              </svg>
+            )}
+          </div>
+        )}
+      </div>
       <CardContent className="flex flex-col justify-between h-24 items-start flex-1 p-0 py-0.5">
         <div>
           <h2 className="text-white text-base font-medium tracking-wide mb-1 line-clamp-1">
@@ -247,6 +459,7 @@ export default function Home() {
       </CardContent>
     </Card>
   );
+};
 
   // 強制更新快取
   const handleRefresh = () => {
@@ -349,12 +562,7 @@ export default function Home() {
                   const movieTitles = new Set<string>();
                   const combinedMovies: DisplayMovie[] = [];
                   
-                  // 創建一個幫助函數，檢查標題是否相似（忽略空格和大小寫）
-                  const isSimilarTitle = (title1: string, title2: string): boolean => {
-                    const normalized1 = title1.toLowerCase().replace(/\s+/g, '');
-                    const normalized2 = title2.toLowerCase().replace(/\s+/g, '');
-                    return normalized1 === normalized2;
-                  };
+                                  // 使用全局定義的 isSimilarTitle 函數
                   
                   // 先加入票房榜電影
                   filteredBoxOffice.forEach(movie => {
