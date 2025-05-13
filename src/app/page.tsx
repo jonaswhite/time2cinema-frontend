@@ -479,13 +479,27 @@ export default function Home() {
   }, []);
 
   // 根據搜尋關鍵字過濾電影
-  const filteredBoxOffice = boxOfficeData.filter((movie) =>
-    movie.title.toLowerCase().includes(query.toLowerCase())
-  );
+  const filteredBoxOffice = boxOfficeData.filter((movie) => {
+    // 確保 title 是字符串且非空
+    if (typeof movie.title !== 'string' || !movie.title) return false;
+    try {
+      return movie.title.toLowerCase().includes(query.toLowerCase());
+    } catch (error) {
+      console.error('Error filtering box office movie:', error);
+      return false;
+    }
+  });
 
-  const filteredNowShowing = nowShowingData.filter((movie) =>
-    movie.title.toLowerCase().includes(query.toLowerCase())
-  );
+  const filteredNowShowing = nowShowingData.filter((movie) => {
+    // 確保 title 是字符串且非空
+    if (typeof movie.title !== 'string' || !movie.title) return false;
+    try {
+      return movie.title.toLowerCase().includes(query.toLowerCase());
+    } catch (error) {
+      console.error('Error filtering now showing movie:', error);
+      return false;
+    }
+  });
 
   return (
     <main className="flex flex-col items-center min-h-screen py-8 px-2 bg-black">
