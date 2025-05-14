@@ -125,51 +125,44 @@ export const createDateTabs = () => {
 };
 
 // 尋找有場次的電影院
-export const findCinemasWithShowtimes = (showtimesData: TheaterShowtimes[], cinemasData: Cinema[]): string[] => {
-  if (!Array.isArray(showtimesData) || !Array.isArray(cinemasData) || showtimesData.length === 0 || cinemasData.length === 0) {
-    console.error('無效的資料格式:', { showtimesData, cinemasData });
+export const findCinemasWithShowtimes = (showtimesData: TheaterShowtimes[], cinemaQuery: string): string[] => {
+  if (!Array.isArray(showtimesData) || showtimesData.length === 0) {
+    console.error('無效的場次資料格式:', { showtimesData });
     return [];
   }
   
-  console.log(`從 ${showtimesData.length} 個場次數據中尋找匹配的電影院`);
-  
-  // 存儲有場次的電影院 ID
   const cinemasWithShowtimes = new Set<string>();
-  const matchedTheaterNames: string[] = [];
-  const unmatchedTheaters: string[] = [];
-  
-  // 常見的電影院名稱後綴和前綴
-  const commonSuffixes = /影城$|大戲院$|影院$|劇場$|戲院$|數位影城$|數位劇院$|數位戲院$|電影城$|電影館$|藝術館$|藝文館$|國際影城$|巨幕影城$/;
-  const commonPrefixes = /^喜滿客|^美麗華|^國賓|^威秀|^新光|^秀泰|^華納|^in89|^IN89|^atmovies|^ATmovies/;
   
   // 清理和標準化電影院名稱的函數
   const cleanTheaterName = (name: string): string => {
+    if (!name) return '';
+    
     return name
-      .replace(commonSuffixes, "")
-      .replace(commonPrefixes, "")
+      .replace(/影城$|大戲院$|影院$|劇場$|戲院$|數位影城$|數位劇院$|數位戲院$|電影城$|電影館$|藝術館$|藝文館$|國際影城$|巨幕影城$/, "")
+      .replace(/^喜滿客|^美麗華|^國賓|^威秀|^新光|^秀泰|^華納|^in89|^IN89|^atmovies|^ATmovies/, "")
       .replace(/\s+/g, "")
       .replace(/[^\w\s\u4e00-\u9fff]/g, "") // 移除特殊字元，保留中文和英文數字
       .toLowerCase()
       .trim();
   };
   
-  // 將所有影院名稱進行預處理
-  const processedCinemas = cinemasData.map(cinema => ({
-    ...cinema,
-    cleanName: cleanTheaterName(cinema.name)
-  }));
-  
   // 遍歷所有場次資料
   for (const theater of showtimesData) {
-    if (!theater || !theater.theater_name || !Array.isArray(theater.showtimes_by_date)) {
-      console.warn('無效的場次資料:', theater);
+    if (!theater || !theater.theater_name) {
+      console.warn('場次資料缺少電影院名稱');
       continue;
     }
     
     // 檢查是否有任何場次
-    const hasAnyShowtimes = theater.showtimes_by_date.some(d => 
-      d && Array.isArray(d.showtimes) && d.showtimes.length > 0
-    );
+    let hasAnyShowtimes = false;
+    if (Array.isArray(theater.showtimes_by_date)) {
+      for (const dateData of theater.showtimes_by_date) {
+        if (Array.isArray(dateData.showtimes) && dateData.showtimes.length > 0) {
+          hasAnyShowtimes = true;
+          break;
+        }
+      }
+    }
     
     if (!hasAnyShowtimes) {
       console.log(`電影院 ${theater.theater_name} 沒有任何場次，跳過`);
@@ -178,59 +171,21 @@ export const findCinemasWithShowtimes = (showtimesData: TheaterShowtimes[], cine
     
     // 清理場次資料中的電影院名稱
     const cleanedTheaterName = cleanTheaterName(theater.theater_name);
-    console.log(`清理後的場次電影院名稱: "${theater.theater_name}" => "${cleanedTheaterName}"`);
     
-    // 尋找匹配的電影院
-    let matchedCinema: Cinema | undefined;
-    let bestMatchScore = 0;
-    
-    // 對每個電影院進行匹配
-    for (const cinema of processedCinemas) {
-      if (!cinema || !cinema.name || !cinema.id) continue;
-      
-      // 計算匹配分數
-      let matchScore = 0;
-      
-      // 完全匹配
-      if (cinema.cleanName === cleanedTheaterName) {
-        matchScore = 100;
-      }
-      // 包含關係匹配
-      else if (cinema.cleanName.includes(cleanedTheaterName) || cleanedTheaterName.includes(cinema.cleanName)) {
-        // 計算包含字元的比例
-        const longerName = cinema.cleanName.length > cleanedTheaterName.length ? cinema.cleanName : cleanedTheaterName;
-        const shorterName = cinema.cleanName.length <= cleanedTheaterName.length ? cinema.cleanName : cleanedTheaterName;
-        matchScore = (shorterName.length / longerName.length) * 80; // 最高 80 分
-      }
-      // 部分匹配 (匹配前三個字)
-      else if (cinema.cleanName.startsWith(cleanedTheaterName.substring(0, 3)) || 
-               cleanedTheaterName.startsWith(cinema.cleanName.substring(0, 3))) {
-        matchScore = 50;
-      }
-      
-      // 如果發現更好的匹配，更新匹配結果
-      if (matchScore > bestMatchScore) {
-        bestMatchScore = matchScore;
-        matchedCinema = cinema;
+    // 如果有搜尋關鍵字，檢查電影院名稱是否包含關鍵字
+    if (cinemaQuery && cinemaQuery.trim() !== '') {
+      const cleanedQuery = cleanTheaterName(cinemaQuery);
+      if (!cleanedTheaterName.includes(cleanedQuery)) {
+        continue; // 不匹配查詢，跳過
       }
     }
     
-    // 如果找到匹配的電影院，則添加到結果中
-    if (matchedCinema && bestMatchScore >= 50) {
-      cinemasWithShowtimes.add(matchedCinema.id);
-      console.log(`場次匹配到電影院: ${theater.theater_name} => ${matchedCinema.name} (分數: ${bestMatchScore})`);
-      matchedTheaterNames.push(`${theater.theater_name} => ${matchedCinema.name} (${bestMatchScore})`);
-    } else {
-      console.warn(`無法匹配場次到電影院: ${theater.theater_name} (最佳分數: ${bestMatchScore})`);
-      unmatchedTheaters.push(theater.theater_name);
-    }
+    // 將電影院ID添加到結果中 (在這裡我們使用電影院名稱作為ID)
+    cinemasWithShowtimes.add(theater.theater_id || theater.theater_name);
   }
   
   const result = Array.from(cinemasWithShowtimes);
-  console.log(`成功匹配 ${matchedTheaterNames.length}/${showtimesData.length} 個電影院`);
-  console.log(`匹配的電影院: ${matchedTheaterNames.join(', ')}`);
-  console.log(`未匹配的電影院: ${unmatchedTheaters.join(', ')}`);
-  console.log(`共找到 ${result.length} 個有場次的電影院`);
+  console.log(`根據查詢 "${cinemaQuery || '全部'}" 找到 ${result.length} 個有場次的電影院`);
   
   return result;
 };
