@@ -188,7 +188,7 @@ export default function Home() {
         releaseDate: movie.release_date || "未知",
         poster: movie.posterUrl || null, // 直接使用後端返回的 posterUrl
         runtime: movie.runtime || null,
-        id: movie.id.toString(),
+        id: movie.id ? movie.id.toString() : `unknown-${Math.random().toString(36).substring(2, 9)}`, // 增加空值檢查，避免 TypeError
         isLoadingPoster: movie.posterUrl ? false : true // 如果有 posterUrl 則不需要加載
       }));
       
