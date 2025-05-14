@@ -173,7 +173,22 @@ export default function ShowtimesPage() {
           throw new Error(`API 請求失敗: ${response.status}`);
         }
         
-        const data = await response.json();
+        let data;
+        try {
+          data = await response.json();
+        } catch (jsonError) {
+          console.error('解析 JSON 失敗:', jsonError);
+          setShowtimes([]);
+          return;
+        }
+        
+        // 檢查返回的資料格式是否有效
+        if (!Array.isArray(data)) {
+          console.error('無效的資料格式:', data);
+          setShowtimes([]);
+          return;
+        }
+        
         console.log(`獲取到 ${data.length} 個電影院的場次資料`);
         setShowtimes(data);
         
@@ -191,77 +206,101 @@ export default function ShowtimesPage() {
             
             // 尋找有今天場次的電影院
             const cinemasWithTodayShowtimes = [];
-            for (const theater of data) {
-              const cinema = cinemas.find(c => {
-                // 常見的電影院名稱後綴和前綴
-                const commonSuffixes = /影城$|大戲院$|影院$|劇場$|戲院$|數位影城$|數位劇院$|數位戲院$|電影城$|電影館$|藝術館$|藝文館$|國際影城$|巨幕影城$/;
-                const commonPrefixes = /^喜滿客|^美麗華|^國賓|^威秀|^新光|^秀泰|^華納|^in89|^IN89|^atmovies|^ATmovies/;
-                
-                // 清理電影院名稱
-                const cleanCinemaName = c.name
-                  .replace(commonSuffixes, "")
-                  .replace(commonPrefixes, "")
-                  .replace(/\s+/g, "")
-                  .replace(/[^\w\s\u4e00-\u9fff]/g, "") // 移除特殊字元，保留中文和英文數字
-                  .toLowerCase()
-                  .trim();
-                  
-                const cleanTheaterName = theater.theater_name
-                  .replace(commonSuffixes, "")
-                  .replace(commonPrefixes, "")
-                  .replace(/\s+/g, "")
-                  .replace(/[^\w\s\u4e00-\u9fff]/g, "") // 移除特殊字元，保留中文和英文數字
-                  .toLowerCase()
-                  .trim();
-                  
-                // 計算匹配分數
-                let matchScore = 0;
-                
-                // 完全匹配
-                if (cleanCinemaName === cleanTheaterName) {
-                  matchScore = 100;
-                }
-                // 包含關係匹配
-                else if (cleanCinemaName.includes(cleanTheaterName) || cleanTheaterName.includes(cleanCinemaName)) {
-                  // 計算包含字元的比例
-                  const longerName = cleanCinemaName.length > cleanTheaterName.length ? cleanCinemaName : cleanTheaterName;
-                  const shorterName = cleanCinemaName.length <= cleanTheaterName.length ? cleanCinemaName : cleanTheaterName;
-                  matchScore = (shorterName.length / longerName.length) * 80; // 最高 80 分
-                }
-                // 部分匹配 (匹配前三個字)
-                else if (cleanCinemaName.startsWith(cleanTheaterName.substring(0, 3)) || 
-                         cleanTheaterName.startsWith(cleanCinemaName.substring(0, 3))) {
-                  matchScore = 50;
+            
+            // 確保 data 是有效的數組
+            if (!Array.isArray(data) || data.length === 0) {
+              console.log('沒有場次資料或資料格式無效');
+            } else {
+              for (const theater of data) {
+                // 確保 theater 是有效的物件且有 theater_name 屬性
+                if (!theater || !theater.theater_name) {
+                  console.warn('發現無效的電影院資料:', theater);
+                  continue;
                 }
                 
-                const isMatch = matchScore >= 50;
-                
-                if (isMatch) {
-                  console.log(`電影院匹配: ${c.name} <==> ${theater.theater_name} (分數: ${matchScore})`);
-                }
-                
-                return isMatch;
-              });
-              
-              if (cinema) {
-                // 尋找今天的場次，使用日期比對
-                const hasTodayShowtimes = theater.showtimes_by_date.some((d: { date: string; showtimes: any[] }) => {
-                  if (!d || !Array.isArray(d.showtimes)) return false;
+                const cinema = cinemas.find(c => {
+                  // 確保電影院名稱存在
+                  if (!c || !c.name) return false;
                   
-                  // 檢查日期是否為今天
-                  const showDate = d.date;
-                  const isTodayShowtime = showDate === todayStr;
+                  // 常見的電影院名稱後綴和前綴
+                  const commonSuffixes = /影城$|大戲院$|影院$|劇場$|戲院$|數位影城$|數位劇院$|數位戲院$|電影城$|電影館$|藝術館$|藝文館$|國際影城$|巨幕影城$/;
+                  const commonPrefixes = /^喜滿客|^美麗華|^國賣|^威秀|^新光|^秀泰|^華納|^in89|^IN89|^atmovies|^ATmovies/;
                   
-                  const hasShowtimes = d.showtimes.length > 0;
-                  console.log(`電影院 ${cinema.name} 日期 ${d.date} 是今天: ${isTodayShowtime}, 有場次: ${hasShowtimes}`);
+                  // 清理電影院名稱
+                  const cleanCinemaName = c.name
+                    .replace(commonSuffixes, "")
+                    .replace(commonPrefixes, "")
+                    .replace(/\s+/g, "")
+                    .replace(/[^\w\s\u4e00-\u9fff]/g, "") // 移除特殊字元，保留中文和英文數字
+                    .toLowerCase()
+                    .trim();
+                    
+                  const cleanTheaterName = theater.theater_name
+                    .replace(commonSuffixes, "")
+                    .replace(commonPrefixes, "")
+                    .replace(/\s+/g, "")
+                    .replace(/[^\w\s\u4e00-\u9fff]/g, "") // 移除特殊字元，保留中文和英文數字
+                    .toLowerCase()
+                    .trim();
+                    
+                  // 計算匹配分數
+                  let matchScore = 0;
                   
-                  // 只返回今天且有場次的情況
-                  return isTodayShowtime && hasShowtimes;
+                  // 完全匹配
+                  if (cleanCinemaName === cleanTheaterName) {
+                    matchScore = 100;
+                  }
+                  // 包含關係匹配
+                  else if (cleanCinemaName.includes(cleanTheaterName) || cleanTheaterName.includes(cleanCinemaName)) {
+                    // 計算包含字元的比例
+                    const longerName = cleanCinemaName.length > cleanTheaterName.length ? cleanCinemaName : cleanTheaterName;
+                    const shorterName = cleanCinemaName.length <= cleanTheaterName.length ? cleanCinemaName : cleanTheaterName;
+                    matchScore = (shorterName.length / longerName.length) * 80; // 最高 80 分
+                  }
+                  // 部分匹配 (匹配前三個字)
+                  else if (cleanCinemaName.startsWith(cleanTheaterName.substring(0, 3)) || 
+                          cleanTheaterName.startsWith(cleanCinemaName.substring(0, 3))) {
+                    matchScore = 50;
+                  }
+                  
+                  const isMatch = matchScore >= 50;
+                  
+                  if (isMatch) {
+                    console.log(`電影院匹配: ${c.name} <==> ${theater.theater_name} (分數: ${matchScore})`);
+                  }
+                  
+                  return isMatch;
                 });
                 
-                if (hasTodayShowtimes) {
-                  cinemasWithTodayShowtimes.push(cinema.id);
-                  console.log(`電影院 ${cinema.name} 有今天的場次，添加到預設選擇`);
+                if (cinema) {
+                  // 確保 showtimes_by_date 存在且是有效的數組
+                  if (!theater.showtimes_by_date || !Array.isArray(theater.showtimes_by_date)) {
+                    console.warn(`電影院 ${cinema.name} 的場次資料無效:`, theater.showtimes_by_date);
+                    continue;
+                  }
+                  
+                  // 尋找今天的場次，使用日期比對
+                  const hasTodayShowtimes = theater.showtimes_by_date.some((d: { date: string; showtimes: any[] }) => {
+                    if (!d || !d.date || !Array.isArray(d.showtimes)) {
+                      console.warn(`發現無效的場次日期資料:`, d);
+                      return false;
+                    }
+                    
+                    // 檢查日期是否為今天
+                    const showDate = d.date;
+                    const isTodayShowtime = showDate === todayStr;
+                    
+                    const hasShowtimes = d.showtimes.length > 0;
+                    console.log(`電影院 ${cinema.name} 日期 ${d.date} 是今天: ${isTodayShowtime}, 有場次: ${hasShowtimes}`);
+                    
+                    // 只返回今天且有場次的情況
+                    return isTodayShowtime && hasShowtimes;
+                  });
+                  
+                  if (hasTodayShowtimes) {
+                    cinemasWithTodayShowtimes.push(cinema.id);
+                    console.log(`電影院 ${cinema.name} 有今天的場次，添加到預設選擇`);
+                  }
                 }
               }
             }
@@ -327,19 +366,6 @@ export default function ShowtimesPage() {
       const selectedDate = dateTabs[selectedDateIdx].date;
       const formattedDate = formatDateKey(selectedDate);
       
-      // 遍歷每個電影院
-      cinemas.forEach(cinema => {
-        console.log(`處理電影院: ${cinema.name} (ID: ${cinema.id})`);
-        // 尋找電影院對應的場次資料
-        const theaterData = showtimes.find(theater => {
-          // 常見的電影院名稱後綴和前綴
-          const commonSuffixes = /影城$|大戲院$|影院$|劇場$|戲院$|數位影城$|數位劇院$|數位戲院$|電影城$|電影館$|藝術館$|藝文館$|國際影城$|巨幕影城$/;
-          const commonPrefixes = /^喜滿客|^美麗華|^國賓|^威秀|^新光|^秀泰|^華納|^in89|^IN89|^atmovies|^ATmovies/;
-          
-          // 清理電影院名稱
-          const cleanCinemaName = cinema.name
-            .replace(commonSuffixes, "")
-            .replace(commonPrefixes, "")
             .replace(/\s+/g, "")
             .replace(/[^\w\s\u4e00-\u9fff]/g, "") // 移除特殊字元，保留中文和英文數字
             .toLowerCase()
@@ -454,28 +480,20 @@ export default function ShowtimesPage() {
     try {
       const groups: Record<string, FormattedShowtime[]> = {};
       
-      if (showtimesLoading || !Array.isArray(showtimes) || showtimes.length === 0 || 
-          !Array.isArray(cinemas) || cinemas.length === 0) {
-        // 移除對 selectedCinemas.length 的檢查，允許在沒有選擇電影院的情況下也返回場次資料
-        console.log('資料載入中或空值，返回空場次組');
-        console.log(`showtimesLoading: ${showtimesLoading}, showtimes.length: ${showtimes?.length || 0}`);
-        console.log(`cinemas.length: ${cinemas?.length || 0}`);
-        return groups;
-      }
-      
-      // 取得選擇的日期
-      const selectedDate = dateTabs[selectedDateIdx].date;
-      const formattedDate = formatDateKey(selectedDate);
-      console.log(`選擇的日期: ${formattedDate}`);
-      
-      // 遍歷每個電影院
-      cinemas.forEach(cinema => {
-        // 只處理被選中的電影院
-        if (!selectedCinemas.includes(cinema.id)) return;
+      // 尋找電影院對應的場次資料
+      const theaterData = showtimes.find(theater => {
+        // 常見的電影院名稱後綴和前綴
+        const commonSuffixes = /影城$|大戲院$|影院$|劇場$|戲院$|數位影城$|數位劇院$|數位戲院$|電影城$|電影館$|藝術館$|藝文館$|國際影城$|巨幕影城$/;
+        const commonPrefixes = /^喜滿客|^美麗華|^國賓|^威秀|^新光|^秀泰|^華納|^in89|^IN89|^atmovies|^ATmovies/;
         
-        // 尋找電影院對應的場次資料
-        const theaterData = showtimes.find(theater => {
-          // 常見的電影院名稱後綴和前綴
+        // 清理電影院名稱
+        const cleanCinemaName = cinema.name
+          .replace(commonSuffixes, "")
+          .replace(commonPrefixes, "")
+          .replace(/\s+/g, "")
+          .replace(/[^\w\s\u4e00-\u9fff]/g, "") // 移除特殊字元，保留中文和英文數字
+          .toLowerCase()
+          .trim();
           const commonSuffixes = /影城$|大戲院$|影院$|劇場$|戲院$|數位影城$|數位劇院$|數位戲院$|電影城$|電影館$|藝術館$|藝文館$|國際影城$|巨幕影城$/;
           const commonPrefixes = /^喜滿客|^美麗華|^國賓|^威秀|^新光|^秀泰|^華納|^in89|^IN89|^atmovies|^ATmovies/;
           
