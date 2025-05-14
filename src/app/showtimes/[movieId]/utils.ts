@@ -125,11 +125,28 @@ export const createDateTabs = () => {
 };
 
 // 尋找有場次的電影院
-export const findCinemasWithShowtimes = (showtimesData: TheaterShowtimes[], cinemaQuery: string): string[] => {
-  if (!Array.isArray(showtimesData) || showtimesData.length === 0) {
-    console.error('無效的場次資料格式:', { showtimesData });
+export const findCinemasWithShowtimes = (showtimesData: TheaterShowtimes[] | any, cinemaQuery: string): string[] => {
+  // 更健壯的輸入檢查
+  if (!showtimesData) {
+    console.error('場次資料為空');
     return [];
   }
+  
+  // 確保輸入是陣列
+  if (!Array.isArray(showtimesData)) {
+    console.error('場次資料不是陣列格式:', typeof showtimesData);
+    return [];
+  }
+  
+  // 檢查陣列是否為空
+  if (showtimesData.length === 0) {
+    console.log('沒有找到任何場次資料');
+    return [];
+  }
+  
+  // 將場次資料序列化以便於檢查
+  const serializedShowtimes = JSON.stringify(showtimesData[0]);
+  console.log(`場次數據結構的第一個項目: – ${JSON.stringify(serializedShowtimes).substring(0, 200)}`);
   
   const cinemasWithShowtimes = new Set<string>();
   
@@ -139,7 +156,7 @@ export const findCinemasWithShowtimes = (showtimesData: TheaterShowtimes[], cine
     
     return name
       .replace(/影城$|大戲院$|影院$|劇場$|戲院$|數位影城$|數位劇院$|數位戲院$|電影城$|電影館$|藝術館$|藝文館$|國際影城$|巨幕影城$/, "")
-      .replace(/^喜滿客|^美麗華|^國賓|^威秀|^新光|^秀泰|^華納|^in89|^IN89|^atmovies|^ATmovies/, "")
+      .replace(/^喜滿客|^美麗華|^國賠|^威秀|^新光|^秀泰|^華納|^in89|^IN89|^atmovies|^ATmovies/, "")
       .replace(/\s+/g, "")
       .replace(/[^\w\s\u4e00-\u9fff]/g, "") // 移除特殊字元，保留中文和英文數字
       .toLowerCase()
@@ -148,24 +165,13 @@ export const findCinemasWithShowtimes = (showtimesData: TheaterShowtimes[], cine
   
   // 遍歷所有場次資料
   for (const theater of showtimesData) {
-    if (!theater || !theater.theater_name) {
-      console.warn('場次資料缺少電影院名稱');
+    if (!theater) {
       continue;
     }
     
-    // 檢查是否有任何場次
-    let hasAnyShowtimes = false;
-    if (Array.isArray(theater.showtimes_by_date)) {
-      for (const dateData of theater.showtimes_by_date) {
-        if (Array.isArray(dateData.showtimes) && dateData.showtimes.length > 0) {
-          hasAnyShowtimes = true;
-          break;
-        }
-      }
-    }
-    
-    if (!hasAnyShowtimes) {
-      console.log(`電影院 ${theater.theater_name} 沒有任何場次，跳過`);
+    // 確保電影院有 ID
+    const theaterId = theater.theater_id || (theater.theater_name ? theater.theater_name : null);
+    if (!theaterId) {
       continue;
     }
     
@@ -180,8 +186,8 @@ export const findCinemasWithShowtimes = (showtimesData: TheaterShowtimes[], cine
       }
     }
     
-    // 將電影院ID添加到結果中 (在這裡我們使用電影院名稱作為ID)
-    cinemasWithShowtimes.add(theater.theater_id || theater.theater_name);
+    // 將電影院ID添加到結果中 (確保轉換為字串類型)
+    cinemasWithShowtimes.add(String(theater.theater_id) || theater.theater_name);
   }
   
   const result = Array.from(cinemasWithShowtimes);

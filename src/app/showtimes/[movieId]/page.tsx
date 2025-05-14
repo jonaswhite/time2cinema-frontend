@@ -72,6 +72,52 @@ export default function ShowtimesPage() {
     getUserLocation();
   }, []);
   
+  // 正規化電影名稱，處理不同變體
+  const normalizeMovieName = (name: string): string => {
+    if (!name) return '';
+    
+    // 移除所有空格、標點符號和特殊字元
+    const normalized = name
+      .replace(/\s+/g, '') // 移除空格
+      .replace(/[\u3000\u00A0]/g, '') // 移除全形空格
+      .replace(/[\-\[\]\(\)「」【】《》“”‘’]/g, '') // 移除括號
+      .toLowerCase(); // 轉為小寫
+      
+    return normalized;
+  };
+  
+  // 檢查兩個電影名稱是否匹配
+  const isMovieNameMatch = (name1: string, name2: string): boolean => {
+    const normalized1 = normalizeMovieName(name1);
+    const normalized2 = normalizeMovieName(name2);
+    
+    // 直接匹配
+    if (normalized1 === normalized2) return true;
+    
+    // 檢查數字表示法差異 (例如 "會計師 2" vs "會計師2")
+    const digitRegex1 = normalized1.match(/(\D+)(\d+)/);
+    const digitRegex2 = normalized2.match(/(\D+)(\d+)/);
+    
+    if (digitRegex1 && digitRegex2 && 
+        digitRegex1[1] === digitRegex2[1] && 
+        digitRegex1[2] === digitRegex2[2]) {
+      return true;
+    }
+    
+    // 包含關係
+    if (normalized1.includes(normalized2) || normalized2.includes(normalized1)) {
+      const longerName = normalized1.length > normalized2.length ? normalized1 : normalized2;
+      const shorterName = normalized1.length <= normalized2.length ? normalized1 : normalized2;
+      
+      // 如果短名稱至少佔長名稱的80%，視為匹配
+      if (shorterName.length / longerName.length >= 0.8) {
+        return true;
+      }
+    }
+    
+    return false;
+  };
+
   // 獲取電影資訊
   useEffect(() => {
     const fetchMovieInfo = async () => {
@@ -88,11 +134,13 @@ export default function ShowtimesPage() {
         
         const data = await response.json();
         
-        // 尋找對應的電影
-        const movieData = data.find((movie: { title: string; posterUrl?: string; releaseDate?: string }) => movie.title === decodedMovieId);
+        // 尋找對應的電影 - 使用智能匹配
+        const movieData = data.find((movie: { title: string; posterUrl?: string; releaseDate?: string }) => 
+          isMovieNameMatch(movie.title, decodedMovieId)
+        );
         
         if (movieData) {
-          console.log(`從快取找到電影: ${movieData.title}`);
+          console.log(`從快取找到電影: ${movieData.title} (原始查詢: ${decodedMovieId})`);
           setMovie({
             id: movieData.title,
             name: movieData.title,
@@ -153,7 +201,11 @@ export default function ShowtimesPage() {
   // 獲取場次資料
   useEffect(() => {
     const fetchShowtimes = async () => {
-      if (!decodedMovieId) return;
+      // 確保電影資訊已經載入完成
+      if (loading || !movie || !movie.id) {
+        console.log('電影資訊尚未載入完成:', { loading, movie: movie ? movie.id : 'null' });
+        return;
+      }
       
       try {
         setShowtimesLoading(true);
@@ -162,39 +214,75 @@ export default function ShowtimesPage() {
         const today = new Date();
         const todayStr = formatDateKey(today);
         
-        console.log(`正在獲取電影 ${decodedMovieId} 在 ${todayStr} 的場次資料...`);
+        // 詳細記錄電影資訊
+        console.log('電影資訊:', {
+          id: movie.id,
+          name: movie.name,
+          originalId: decodedMovieId,
+          urlParam: movieId
+        });
+        
+        // 使用電影資訊中的 ID，而非 URL 參數
+        const movieIdToUse = movie.id;
+        
+        // 記錄完整的 API 請求 URL
+        const apiUrl = `${API_URL}/api/showtimes/movie/${encodeURIComponent(movieIdToUse)}?date=${todayStr}`;
+        console.log(`正在獲取場次資料... API URL: ${apiUrl}`);
         
         // 發送 API 請求
-        const response = await fetch(`${API_URL}/api/showtimes/movie/${encodeURIComponent(decodedMovieId)}?date=${todayStr}`);
+        const response = await fetch(apiUrl);
+        
+        // 詳細記錄回應狀態
+        console.log('API 回應狀態:', {
+          status: response.status,
+          statusText: response.statusText,
+          ok: response.ok,
+          headers: Object.fromEntries(response.headers.entries())
+        });
         
         if (!response.ok) {
-          throw new Error(`場次 API 請求失敗: ${response.status}`);
+          throw new Error(`場次 API 請求失敗: ${response.status} ${response.statusText}`);
         }
+        
+        // 記錄原始回應內容
+        const responseText = await response.text();
+        console.log(`API 回應原始內容 (前 100 字符): ${responseText.substring(0, 100)}...`);
         
         // 嘗試解析 JSON
         let data;
         try {
-          data = await response.json();
-        } catch (error) {
-          console.error('JSON 解析錯誤:', error);
-          throw new Error('獲取場次數據失敗: 無效的 JSON 格式');
+          data = JSON.parse(responseText);
+        } catch (parseError) {
+          console.error('JSON 解析錯誤:', parseError);
+          throw new Error('無法解析 API 回應為 JSON');
         }
         
-        // 檢查返回的數據是否為數組
-        if (!Array.isArray(data)) {
-          console.error('API 返回的數據不是數組:', data);
-          throw new Error('獲取場次數據失敗: 返回的數據格式不正確');
-        }
+        // 詳細記錄返回的數據類型
+        console.log('API 返回數據類型:', {
+          isArray: Array.isArray(data),
+          type: typeof data,
+          length: Array.isArray(data) ? data.length : 'N/A'
+        });
         
         // 如果數組為空，顯示提示
-        if (data.length === 0) {
-          console.log(`電影 ${decodedMovieId} 在 ${todayStr} 沒有場次資料`);
+        if (!Array.isArray(data) || data.length === 0) {
+          console.log(`電影 ${movieIdToUse} 沒有場次資料`);
           setShowtimes([]);
-          setShowtimesLoading(false);
           return;
         }
         
         console.log(`成功獲取 ${data.length} 個電影院的場次資料`);
+        
+        // 詳細記錄第一個電影院的場次資料
+        if (data.length > 0) {
+          const firstTheater = data[0];
+          console.log('第一個電影院場次資料:', {
+            theater_id: firstTheater.theater_id,
+            theater_name: firstTheater.theater_name,
+            showtimes_by_date_count: Array.isArray(firstTheater.showtimes_by_date) ? firstTheater.showtimes_by_date.length : 'N/A'
+          });
+        }
+        
         setShowtimes(data);
       } catch (error) {
         console.error('獲取場次資料失敗:', error);
@@ -205,20 +293,86 @@ export default function ShowtimesPage() {
     };
     
     fetchShowtimes();
-  }, [decodedMovieId]);
+  }, [movie, loading, decodedMovieId, movieId]);
   
   // 有場次的電影院列表
   const filteredCinemas = React.useMemo(() => {
-    if (cinemasLoading || !Array.isArray(cinemas) || cinemas.length === 0) {
+    try {
+      console.log('filteredCinemas 計算開始...');
+      console.log('cinemas 狀態:', {
+        cinemasLoading,
+        cinemasLength: Array.isArray(cinemas) ? cinemas.length : 'not array',
+        showtimesLength: Array.isArray(showtimes) ? showtimes.length : 'not array',
+        showtimesLoading
+      });
+      
+      // 確保電影院數據已經載入
+      if (cinemasLoading || !Array.isArray(cinemas) || cinemas.length === 0) {
+        console.log('電影院數據尚未載入完成，返回空陣列');
+        return [];
+      }
+      
+      // 確保場次數據已經載入
+      if (showtimesLoading) {
+        console.log('場次數據尚未載入完成，返回空陣列');
+        return [];
+      }
+      
+      // 檢查場次數據的格式
+      if (!Array.isArray(showtimes)) {
+        console.error('場次數據不是陣列格式:', typeof showtimes);
+        return [];
+      }
+      
+      // 檢查場次數據是否為空
+      if (showtimes.length === 0) {
+        console.log('沒有找到任何場次數據，返回空陣列');
+        return [];
+      }
+      
+      console.log('場次數據結構的第一個項目:', JSON.stringify(showtimes[0]).substring(0, 200) + '...');
+      
+      // 找出有場次的電影院ID
+      const cinemasWithShowtimes = findCinemasWithShowtimes(showtimes, cinemaQuery);
+      console.log(`找到 ${cinemasWithShowtimes.length} 個有場次的電影院`);
+      
+      // 過濾出有場次的電影院，確保 ID 比較時都是字串類型
+      const filtered = cinemas.filter(cinema => {
+        const cinemaId = String(cinema.id);
+        return cinemasWithShowtimes.some(id => String(id) === cinemaId);
+      });
+      console.log(`過濾後剩下 ${filtered.length} 個電影院`);
+      
+      // 如果過濾後沒有電影院，但有場次資料，則直接從場次資料建立電影院列表
+      if (filtered.length === 0 && showtimes.length > 0) {
+        console.log('從場次資料中直接建立電影院列表');
+        
+        // 建立一個 Map 來去除重複的電影院
+        const cinemaMap = new Map();
+        
+        showtimes.forEach(theater => {
+          if (theater && theater.theater_id && theater.theater_name) {
+            cinemaMap.set(String(theater.theater_id), {
+              id: String(theater.theater_id),
+              name: theater.theater_name,
+              address: '',
+              lat: 25.0330, // 預設台北市座標
+              lng: 121.5654
+            });
+          }
+        });
+        
+        const cinemasFromShowtimes = Array.from(cinemaMap.values());
+        console.log(`從場次資料中建立了 ${cinemasFromShowtimes.length} 個電影院`);
+        return cinemasFromShowtimes;
+      }
+      
+      return filtered;
+    } catch (error) {
+      console.error('filteredCinemas 計算錯誤:', error);
       return [];
     }
-    
-    // 找出有場次的電影院ID
-    const cinemasWithShowtimes = findCinemasWithShowtimes(showtimes, cinemaQuery);
-    
-    // 過濾出有場次的電影院
-    return cinemas.filter(cinema => cinemasWithShowtimes.includes(cinema.id));
-  }, [cinemas, cinemasLoading, cinemaQuery, showtimes]);
+  }, [cinemas, cinemasLoading, cinemaQuery, showtimes, showtimesLoading]);
   
   // 所有有場次的電影院數據 (用於地圖顯示)
   const allShowtimesByCinema = React.useMemo<Record<string, FormattedShowtime[]>>(() => {
@@ -286,16 +440,37 @@ export default function ShowtimesPage() {
         if (!cinema || !cinema.name || !cinema.id) return;
         
         // 尋找電影院對應的場次資料
-        const theaterData = showtimes.find(theater => {
-          if (!theater || !theater.theater_name) return false;
-          const matchScore = calculateMatchScore(cinema.name, theater.theater_name);
-          return matchScore >= 50;
+        // 先嘗試精確匹配電影院 ID
+        let theaterData = showtimes.find(theater => {
+          return theater && theater.theater_id && theater.theater_id.toString() === cinema.id.toString();
         });
+        
+        // 如果沒有找到，嘗試名稱匹配
+        if (!theaterData) {
+          theaterData = showtimes.find(theater => {
+            if (!theater || !theater.theater_name) return false;
+            const matchScore = calculateMatchScore(cinema.name, theater.theater_name);
+            // 降低匹配門檻
+            return matchScore >= 30;
+          });
+        }
+        
+        // 如果還是沒有找到，嘗試更寬魅的匹配
+        if (!theaterData) {
+          theaterData = showtimes.find(theater => {
+            if (!theater || !theater.theater_name) return false;
+            // 簡單字符串包含匹配
+            const cinemaNameLower = cinema.name.toLowerCase();
+            const theaterNameLower = theater.theater_name.toLowerCase();
+            return cinemaNameLower.includes(theaterNameLower) || theaterNameLower.includes(cinemaNameLower);
+          });
+        }
         
         if (!theaterData || !Array.isArray(theaterData.showtimes_by_date)) return;
         
         // 尋找符合選擇日期的場次
-        const dateData = theaterData.showtimes_by_date.find(d => {
+        // 先嘗試精確匹配日期
+        let dateData = theaterData.showtimes_by_date.find(d => {
           if (!d || !d.date) return false;
           
           // 擴展日期比對選擇，同時處理絕對日期和相對日期標籤
@@ -304,6 +479,12 @@ export default function ShowtimesPage() {
                  (formattedDate === tomorrowStr && (d.date === '明天' || d.label === '明天')) ||
                  (formattedDate === dayAfterTomorrowStr && (d.date === '後天' || d.label === '後天'));
         });
+        
+        // 如果沒有找到精確匹配的日期，則使用第一個日期的場次
+        if (!dateData && theaterData.showtimes_by_date.length > 0) {
+          console.log(`找不到日期 ${formattedDate} 的場次，使用第一個日期的場次`);
+          dateData = theaterData.showtimes_by_date[0];
+        }
         
         // 如果有場次，則添加到結果中
         if (dateData && Array.isArray(dateData.showtimes) && dateData.showtimes.length > 0) {

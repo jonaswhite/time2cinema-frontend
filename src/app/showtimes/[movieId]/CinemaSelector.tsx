@@ -62,9 +62,9 @@ const CinemaSelector: React.FC<CinemaSelectorProps> = ({
         ) : (
           <>
             {/* 顯示電影院總數的提示 */}
-            {!cinemaQuery.trim() && findCinemasWithShowtimes(showtimes, cinemas).length > 9 && (
+            {!cinemaQuery.trim() && findCinemasWithShowtimes(showtimes, "").length > 9 && (
               <div className="w-full text-center py-2 mb-2 text-neutral-400 text-sm">
-                共有 {findCinemasWithShowtimes(showtimes, cinemas).length} 家電影院放映此電影
+                共有 {findCinemasWithShowtimes(showtimes, "").length} 家電影院放映此電影
                 <br />
                 請搜尋市區或電影院名稱，或點擊地圖上的標記選擇電影院
               </div>
