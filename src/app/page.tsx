@@ -363,8 +363,46 @@ export default function Home() {
     }
   };
 
+  // 格式化日期為 YYYY-MM-DD 格式
+  const formatDate = (dateString: string | null | undefined): string => {
+    if (!dateString) return '未知';
+    try {
+      const date = new Date(dateString);
+      // 檢查日期是否有效
+      if (isNaN(date.getTime())) return '未知';
+      
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      
+      return `${year}-${month}-${day}`;
+    } catch (error) {
+      console.error('日期格式化錯誤:', error);
+      return '未知';
+    }
+  };
+
   // 創建一個可重用的電影卡片元件
   const MovieCard = ({ movie }: { movie: DisplayMovie }) => {
+    // 格式化日期為 YYYY-MM-DD 格式
+    const formatDate = (dateString: string | null | undefined): string => {
+      if (!dateString) return '未知';
+      try {
+        const date = new Date(dateString);
+        // 檢查日期是否有效
+        if (isNaN(date.getTime())) return '未知';
+        
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        
+        return `${year}-${month}-${day}`;
+      } catch (error) {
+        console.error('日期格式化錯誤:', error);
+        return '未知';
+      }
+    };
+
     // 檢查 URL 是否為有效的圖片網址
     const isValidImageUrl = (url: string | null | undefined): boolean => {
       return !!url && typeof url === 'string' && url.trim() !== '' && 
@@ -463,7 +501,7 @@ export default function Home() {
           <h2 className="text-white text-base font-medium tracking-wide mb-1 line-clamp-1">
             {movie.title}
           </h2>
-          <div className="text-neutral-400 text-xs">上映日：{movie.releaseDate}</div>
+          <div className="text-neutral-400 text-xs">上映日：{formatDate(movie.releaseDate)}</div>
         </div>
         <div className="text-neutral-400 text-xs">
           {movie.runtime ? `片長：${movie.runtime} 分鐘` : ''}
@@ -621,7 +659,7 @@ export default function Home() {
                         <h2 className="text-white text-base font-medium tracking-wide mb-1 line-clamp-1">
                           {movie.title}
                         </h2>
-                        <div className="text-neutral-400 text-xs">上映日：{movie.releaseDate}</div>
+                        <div className="text-neutral-400 text-xs">上映日：{formatDate(movie.releaseDate)}</div>
                       </div>
                       <div className="text-neutral-400 text-xs">
                         {movie.runtime ? `片長：${movie.runtime} 分鐘` : ''}
