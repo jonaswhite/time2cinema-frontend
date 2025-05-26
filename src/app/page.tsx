@@ -419,20 +419,15 @@ export default function Home() {
       }
     }
     
+    // 生成唯一的 key，結合多個屬性來確保唯一性
+    const uniqueKey = `movie-${movie.id || ''}-${movie.title}-${movie.releaseDate || ''}`.replace(/\s+/g, '-')
+    
     return (
     <Card
-      key={movie.id || movie.title}
+      key={uniqueKey}
       className="bg-neutral-900 border border-neutral-800 rounded-xl shadow flex flex-row items-center relative overflow-hidden min-h-[96px] px-3 py-2 cursor-pointer hover:bg-neutral-800 transition-colors"
       onClick={() => router.push(`/showtimes/${encodeURIComponent(movie.title)}`)}
     >
-      {movie.rank && movie.rank <= 10 && (
-        <Badge
-          className="absolute left-3 top-3 bg-white/10 text-white font-light px-2 py-0.5 text-[11px] rounded-full backdrop-blur"
-          variant="secondary"
-        >
-          NO.{movie.rank}
-        </Badge>
-      )}
       <div className="relative w-16 h-24 bg-gray-200 rounded-lg overflow-hidden mr-4 flex-shrink-0">
         {posterUrl ? (
           <img 
@@ -478,12 +473,6 @@ export default function Home() {
   );
 };
 
-  // 強制更新快取
-  const handleRefresh = () => {
-    fetchBoxOffice(true);
-    fetchNowShowingMovies(true);
-  };
-
   // 初始載入資料
   useEffect(() => {
     // 添加客戶端檢查
@@ -522,15 +511,6 @@ export default function Home() {
     <main className="flex flex-col items-center min-h-screen py-8 px-2 bg-black">
       <div className="flex items-center justify-between w-full max-w-lg mb-4">
         <h1 className="text-2xl font-bold tracking-tight text-white">Time2Cinema</h1>
-        <Button 
-          variant="outline" 
-          onClick={handleRefresh} 
-          disabled={refreshing || loading || nowShowingLoading}
-          className="text-xs h-8 px-3 bg-neutral-900 border-neutral-700 text-white hover:bg-neutral-800 hover:text-white"
-        >
-          <RefreshCw className={`h-3 w-3 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
-          {refreshing ? '更新中' : '更新資料'}
-        </Button>
       </div>
 
       <Input
@@ -569,67 +549,89 @@ export default function Home() {
         {query ? (
           // 搜尋模式：合併顯示所有符合搜尋條件的電影
           <>
-            {(loading || nowShowingLoading) ? (
+            {loading || nowShowingLoading ? (
               // 骨架屏代替簡單的載入中文字
               Array(3).fill(0).map((_, index) => (
                 <Card key={index} className="bg-neutral-900 border border-neutral-800 rounded-xl shadow flex flex-row items-center relative overflow-hidden min-h-[96px] px-3 py-2">
                   <Skeleton className="w-16 h-24 rounded-lg bg-neutral-800" />
-                  <CardContent className="flex flex-col justify-between h-24 items-start flex-1 p-0 py-0.5 ml-4">
+                  <div className="flex flex-col justify-between h-24 items-start flex-1 p-0 py-0.5 ml-4">
                     <div className="w-full">
                       <Skeleton className="h-5 w-3/4 bg-neutral-800 mb-1" />
                       <Skeleton className="h-3 w-1/2 bg-neutral-800" />
                     </div>
                     <Skeleton className="h-3 w-1/3 bg-neutral-800" />
-                  </CardContent>
+                  </div>
                 </Card>
               ))
-            ) : (error || nowShowingError) ? (
+            ) : error || nowShowingError ? (
               <div className="text-red-400 text-center py-4">{error || nowShowingError}</div>
-            ) : (filteredBoxOffice.length > 0 || filteredNowShowing.length > 0) ? (
-              // 合併兩個列表並去除重複電影
-              <>
-                {/* 創建一個電影標題的集合來追蹤重複項 */}
-                {(() => {
-                  const movieTitles = new Set<string>();
-                  const combinedMovies: DisplayMovie[] = [];
-                  
-                                  // 使用全局定義的 isSimilarTitle 函數
-                  
-                  // 先加入票房榜電影
-                  filteredBoxOffice.forEach(movie => {
-                    // 檢查是否已經有相似標題的電影
-                    const hasSimilarTitle = Array.from(movieTitles).some(title => 
-                      isSimilarTitle(title, movie.title)
-                    );
-                    
-                    if (!hasSimilarTitle) {
-                      movieTitles.add(movie.title);
-                      combinedMovies.push(movie);
-                    }
-                  });
-                  
-                  // 再加入上映中電影（如果不重複）
-                  filteredNowShowing.forEach(movie => {
-                    // 檢查是否已經有相似標題的電影
-                    const hasSimilarTitle = Array.from(movieTitles).some(title => 
-                      isSimilarTitle(title, movie.title)
-                    );
-                    
-                    if (!hasSimilarTitle) {
-                      movieTitles.add(movie.title);
-                      combinedMovies.push(movie);
-                    }
-                  });
-                  
-                  return combinedMovies.map(movie => (
-                    <MovieCard key={movie.title} movie={movie} />
-                  ));
-                })()} 
-              </>
-            ) : (
+            ) : filteredBoxOffice.length === 0 && filteredNowShowing.length === 0 ? (
               <div className="text-neutral-500 text-center py-8">查無電影</div>
+            ) : (
+              // 合併兩個列表並去除重複電影
+              (() => {
+                const movieTitles = new Set<string>();
+                const combinedMovies: DisplayMovie[] = [];
+                
+                // 先加入票房榜電影
+                filteredBoxOffice.forEach(movie => {
+                  if (!movieTitles.has(movie.title)) {
+                    movieTitles.add(movie.title);
+                    combinedMovies.push(movie);
+                  }
+                });
+                
+                // 再加入上映中電影
+                filteredNowShowing.forEach(movie => {
+                  if (!movieTitles.has(movie.title)) {
+                    movieTitles.add(movie.title);
+                    combinedMovies.push(movie);
+                  }
+                });
+                
+                return combinedMovies.map((movie) => (
+                  <Card
+                    key={`${movie.id || ''}-${movie.title}`}
+                    className="bg-neutral-900 border border-neutral-800 rounded-xl shadow flex flex-row items-center relative overflow-hidden min-h-[96px] px-3 py-2 cursor-pointer hover:bg-neutral-800 transition-colors"
+                    onClick={() => router.push(`/showtimes/${encodeURIComponent(movie.title)}`)}
+                  >
+                    <div className="relative w-16 h-24 bg-gray-200 rounded-lg overflow-hidden mr-4 flex-shrink-0">
+                      {movie.poster ? (
+                        <img 
+                          src={movie.poster}
+                          alt={movie.title} 
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            console.warn(`電影 ${movie.title} 圖片載入失敗: ${movie.poster}`);
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = "https://placehold.co/400x600/222/444?text=No+Poster";
+                          }}
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center h-full">
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-8 h-8 text-gray-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-col justify-between h-24 items-start flex-1 p-0 py-0.5">
+                      <div>
+                        <h2 className="text-white text-base font-medium tracking-wide mb-1 line-clamp-1">
+                          {movie.title}
+                        </h2>
+                        <div className="text-neutral-400 text-xs">上映日：{movie.releaseDate}</div>
+                      </div>
+                      <div className="text-neutral-400 text-xs">
+                        {movie.runtime ? `片長：${movie.runtime} 分鐘` : ''}
+                      </div>
+                    </div>
+                  </Card>
+                ));
+              })()
             )}
-          </>
+』          </>
         ) : activeTab === "box-office" ? (
           // 本週票房內容
           loading ? (
@@ -652,7 +654,7 @@ export default function Home() {
             <div className="text-neutral-500 text-center py-8">查無電影</div>
           ) : (
             filteredBoxOffice.map((movie) => (
-              <MovieCard key={movie.rank} movie={movie} />
+              <MovieCard key={`boxoffice-${movie.rank}-${movie.title}`} movie={movie} />
             ))
           )
         ) : (
