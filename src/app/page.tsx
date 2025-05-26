@@ -21,7 +21,7 @@ interface BoxOfficeMovie {
   totalsales: number | null; // 累計票數
   release_date: string | null; // 上映日
   week_start_date: string; // 週開始日期
-  posterUrl: string | null; // 海報 URL
+  poster_url: string | null; // 海報 URL (與後端 API 一致)
   runtime: number | null; // 片長（分鐘）
   tmdb_id: number | null; // TMDB ID
 }
@@ -32,7 +32,7 @@ interface NowShowingMovie {
   title: string; // 電影標題
   original_title: string | null; // 原始標題
   release_date: string | null; // 上映日期
-  posterUrl: string | null; // 海報 URL
+  poster_url: string | null; // 海報 URL (與後端 API 一致)
   runtime: number | null; // 片長（分鐘）
   tmdb_id: number | null; // TMDB ID
 }
@@ -180,23 +180,22 @@ export default function Home() {
 
       const data = await response.json();
 
-      // 將後端資料轉換為前端顯示格式，直接使用後端返回的 posterUrl
+      // 將後端資料轉換為前端顯示格式，直接使用後端返回的 poster_url
       const displayData: DisplayMovie[] = data.map((movie: BoxOfficeMovie) => ({
         rank: movie.rank,
         title: movie.title,
         weeklySales: formatTickets(movie.tickets),
         releaseDate: movie.release_date || "未知",
-        poster: movie.posterUrl || null, // 直接使用後端返回的 posterUrl
+        poster: movie.poster_url, // 使用後端返回的 poster_url
         runtime: movie.runtime || null,
         id: movie.id ? movie.id.toString() : `unknown-${Math.random().toString(36).substring(2, 9)}`, // 增加空值檢查，避免 TypeError
-        isLoadingPoster: movie.posterUrl ? false : true // 如果有 posterUrl 則不需要加載
+        isLoadingPoster: !movie.poster_url // 如果沒有 poster_url 則需要加載
       }));
       
       // 設置票房資料
       setBoxOfficeData(displayData);
       
-      // 開始獲取海報
-      fetchPosters(displayData);
+      // 不再需要單獨獲取海報
 
       // 保存到本地快取
       localStorage.setItem('boxOfficeData', JSON.stringify(displayData));
@@ -214,6 +213,8 @@ export default function Home() {
 
   // 從後端 API 獲取上映中電影資料
   const fetchNowShowingMovies = async (forceRefresh = false) => {
+    setNowShowingLoading(true);
+    
     try {
       // 如果不是強制刷新且有快取資料，則使用快取資料
       if (!forceRefresh) {
@@ -236,132 +237,51 @@ export default function Home() {
         }
       }
       
-      setNowShowingLoading(true);
+      // 發送 API 請求
+      const response = await fetch(`${API_URL}/api/movies/now-showing`);
       
-      // 確保使用正確的 API 路徑
-      const url = forceRefresh 
-        ? `${API_URL}/api/movies/now-showing?refresh=true`
-        : `${API_URL}/api/movies/now-showing`;
-        
-      const response = await fetch(url);
-
       if (!response.ok) {
         throw new Error(`API 請求失敗: ${response.status}`);
       }
-
+      
       const data = await response.json();
-
-      // 將後端資料轉換為前端顯示格式，直接使用後端返回的 posterUrl
-      const displayData: DisplayMovie[] = data.map((movie: NowShowingMovie) => ({
-        title: movie.title,
-        releaseDate: movie.release_date || "未知",
-        poster: movie.posterUrl || null, // 直接使用後端返回的 posterUrl
+      
+      // 轉換為 DisplayMovie 格式
+      const formattedMovies: DisplayMovie[] = data.map((movie: NowShowingMovie) => ({
+        id: movie.id?.toString() || '',
+        title: movie.title || '未知電影',
+        original_title: movie.original_title,
+        releaseDate: movie.release_date || '未知',
+        poster: movie.poster_url,  // 使用 poster_url 欄位
         runtime: movie.runtime,
-        id: movie.id.toString(),
-        isLoadingPoster: movie.posterUrl ? false : true // 如果有 posterUrl 則不需要加載
+        tmdb_id: movie.tmdb_id,
+        isLoadingPoster: !movie.poster_url // 如果沒有海報，則標記為需要加載
       }));
-
-      // 設置上映中電影資料
-      setNowShowingData(displayData);
       
-      // 開始獲取海報
-      fetchPosters(displayData);
+      setNowShowingData(formattedMovies);
       
-      // 保存到本地快取
-      localStorage.setItem('nowShowingData', JSON.stringify(displayData));
+      // 儲存到本地快取
+      localStorage.setItem('nowShowingData', JSON.stringify(formattedMovies));
       localStorage.setItem('nowShowingTimestamp', Date.now().toString());
       
+      // 不再需要單獨獲取海報
+      
       setNowShowingError(null);
-    } catch (err) {
-      console.error('獲取上映中電影失敗:', err);
+    } catch (error) {
+      console.error('獲取上映中電影時出錯:', error);
       setNowShowingError('獲取上映中電影失敗，請稍後再試');
+      
+      // 如果 API 請求失敗，嘗試從本地儲存載入
+      const cachedData = localStorage.getItem('nowShowingData');
+      if (cachedData) {
+        setNowShowingData(JSON.parse(cachedData));
+      }
     } finally {
       setNowShowingLoading(false);
     }
   };
 
-  // 獲取電影海報
-  const fetchPosters = async (movies: DisplayMovie[]) => {
-    try {
-      // 為每部電影獲取海報
-      const updatedMovies = [...movies];
-      
-      // 使用 Promise.all 並行獲取所有海報
-      await Promise.all(movies.map(async (movie, index) => {
-        try {
-          // 先嘗試使用本地映射表
-          let posterUrl = null;
-          
-          // 1. 先在本地映射表中尋找
-          if (posterMap[movie.title]) {
-            posterUrl = posterMap[movie.title];
-            console.log(`從本地映射表找到海報: ${movie.title}`);
-          } else {
-            // 2. 尋找相似的標題
-            for (const [title, url] of Object.entries(posterMap)) {
-              if (isSimilarTitle(title, movie.title)) {
-                posterUrl = url;
-                console.log(`從本地映射表找到相似海報: ${movie.title} ≈ ${title}`);
-                break;
-              }
-            }
-            
-            // 3. 如果本地映射表中沒有，則使用 API
-            if (!posterUrl) {
-              try {
-                const url = `${API_URL}/api/tmdb/poster/${encodeURIComponent(movie.title)}${movie.releaseDate && movie.releaseDate !== "未知" ? `?releaseDate=${movie.releaseDate}` : ''}`;
-                console.log(`請求海報 API: ${url}`);
-                const response = await fetch(url);
-                
-                if (response.ok) {
-                  const data = await response.json();
-                  posterUrl = data.posterUrl;
-                  console.log(`從 API 獲取到海報: ${movie.title}, URL: ${posterUrl}`);
-                }
-              } catch (error) {
-                console.error(`獲取電影 ${movie.title} 的海報時出錯:`, error);
-              }
-            }
-          }
-          
-          // 4. 更新電影海報
-          updatedMovies[index] = {
-            ...updatedMovies[index],
-            poster: posterUrl || "https://placehold.co/400x600/222/444?text=No+Poster", // 使用預設海報
-            isLoadingPoster: false
-          };
-          
-          // 立即更新狀態，這樣海報會在獲取後立即顯示
-          if (movies === boxOfficeData) {
-            setBoxOfficeData([...updatedMovies]);
-          } else if (movies === nowShowingData) {
-            setNowShowingData([...updatedMovies]);
-          }
-        } catch (err) {
-          console.error(`獲取電影 ${movie.title} 的海報時出錯:`, err);
-          // 標記為加載完成但海報為 null
-          updatedMovies[index] = {
-            ...updatedMovies[index],
-            poster: "https://placehold.co/400x600/222/444?text=No+Poster", // 使用預設海報
-            isLoadingPoster: false
-          };
-        }
-      }));
-      
-      // 最終更新狀態
-      if (movies === boxOfficeData) {
-        setBoxOfficeData(updatedMovies);
-        // 更新本地快取
-        localStorage.setItem('boxOfficeData', JSON.stringify(updatedMovies));
-      } else if (movies === nowShowingData) {
-        setNowShowingData(updatedMovies);
-        // 更新本地快取
-        localStorage.setItem('nowShowingData', JSON.stringify(updatedMovies));
-      }
-    } catch (err) {
-      console.error('獲取海報時出錯:', err);
-    }
-  };
+  // 不再需要單獨的海報獲取函數，直接使用後端 API 返回的 poster_url
 
   // 格式化日期為 YYYY-MM-DD 格式
   const formatDate = (dateString: string | null | undefined): string => {
@@ -405,8 +325,17 @@ export default function Home() {
 
     // 檢查 URL 是否為有效的圖片網址
     const isValidImageUrl = (url: string | null | undefined): boolean => {
-      return !!url && typeof url === 'string' && url.trim() !== '' && 
-        (url.startsWith('http://') || url.startsWith('https://'));
+      if (!url || typeof url !== 'string' || url.trim() === '') {
+        return false;
+      }
+      
+      // 檢查是否為有效的圖片網址（支援 http/https 開頭或 / 開頭的路徑）
+      const trimmedUrl = url.trim();
+      return (
+        trimmedUrl.startsWith('http://') || 
+        trimmedUrl.startsWith('https://') ||
+        trimmedUrl.startsWith('/')
+      );
     };
 
     // 嘗試從本地映射表獲取海報，如果 movie.poster 為 null
@@ -435,27 +364,9 @@ export default function Home() {
     
     // 確保無論如何都有一個預設圖片
     const DEFAULT_POSTER = "https://placehold.co/400x600/222/444?text=No+Poster";
-    let posterUrl: string = DEFAULT_POSTER;
     
-    // 詳細記錄 movie.poster 的值，幫助 debug
-    console.log(`電影 ${movie.title} 的 poster 值:`, movie.poster, 
-      `類型: ${typeof movie.poster}`, 
-      `有效性: ${isValidImageUrl(movie.poster)}`);
-    
-    // 優先使用 movie.poster，但必須是有效的圖片 URL
-    if (isValidImageUrl(movie.poster)) {
-      console.log(`電影 ${movie.title} 使用原始海報: ${movie.poster}`);
-      posterUrl = movie.poster as string;
-    } else {
-      // 如果 movie.poster 無效，嘗試從本地映射表獲取
-      const localPoster: string | null = getPosterFromLocalMap(movie.title);
-      if (isValidImageUrl(localPoster)) {
-        console.log(`電影 ${movie.title} 從本地映射表獲取海報: ${localPoster}`);
-        posterUrl = localPoster as string;
-      } else {
-        console.log(`電影 ${movie.title} 沒有有效海報，使用預設圖片`);
-      }
-    }
+    // 直接使用 API 返回的 poster_url，如果沒有則使用預設圖片
+    const posterUrl = movie.poster || DEFAULT_POSTER;
     
     // 生成唯一的 key，結合多個屬性來確保唯一性
     const uniqueKey = `movie-${movie.id || ''}-${movie.title}-${movie.releaseDate || ''}`.replace(/\s+/g, '-')
