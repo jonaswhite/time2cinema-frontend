@@ -44,22 +44,23 @@ const MapComponent: React.FC<MapComponentProps> = ({
       console.log('showtimesByCinema 為空或未定義');
     }
     
-    // 只要有有效座標的電影院都顯示，不再要求必須有場次
+    // 只顯示有場次的電影院
     return cinemas.filter(cinema => {
       // 檢查該電影院是否有有效座標
       const hasValidCoords = (cinema.lat !== undefined && cinema.lng !== undefined) || 
                            (cinema.latitude !== undefined && cinema.longitude !== undefined);
       
-      // 檢查是否有場次（僅用於調試輸出）
+      // 檢查是否有場次
       const hasShowtimes = showtimesByCinema && 
                          showtimesByCinema[cinema.id] && 
                          showtimesByCinema[cinema.id].length > 0;
       
       if (hasValidCoords && !hasShowtimes) {
-        console.log(`電影院 ${cinema.name}(ID:${cinema.id}) 有有效座標但沒有場次`);
+        console.log(`電影院 ${cinema.name}(ID:${cinema.id}) 有有效座標但沒有場次，已過濾`);
+        return false; // 沒有場次就不顯示
       }
       
-      return hasValidCoords; // 只要有有效座標就顯示
+      return hasValidCoords && hasShowtimes; // 必須同時有有效座標和場次才顯示
     });
   }, [cinemas, showtimesByCinema]);
 
@@ -198,8 +199,6 @@ const MapComponent: React.FC<MapComponentProps> = ({
               >
                 {selectedCinemas.includes(cinema.id) ? (
                   <MdMovie className="text-yellow-500" size={20} />
-                ) : hasShowtimes ? (
-                  <MdLocalMovies className="text-blue-500" size={20} />
                 ) : (
                   <MdLocalMovies className="text-gray-400" size={20} />
                 )}
