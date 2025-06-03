@@ -141,54 +141,94 @@ export default function ShowtimesPage() {
   // 獲取電影資訊
   useEffect(() => {
     const fetchMovieInfo = async () => {
-      if (!decodedMovieId) return;
-      
-      try {
-        setLoading(true);
-        // 從 boxoffice-with-posters API 獲取電影海報
-        const response = await fetch(`${API_URL}/api/tmdb/boxoffice-with-posters`);
-        
-        if (!response.ok) {
-          throw new Error(`API 請求失敗: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        // 尋找對應的電影 - 使用智能匹配
-        const movieData = data.find((movie: { title: string; posterUrl?: string; releaseDate?: string }) => 
-          isMovieNameMatch(movie.title, decodedMovieId)
-        );
-        
-        if (movieData) {
-          console.log(`從快取找到電影: ${movieData.title} (原始查詢: ${decodedMovieId})`);
-          setMovie({
-            id: movieData.title,
-            name: movieData.title,
-            release: movieData.releaseDate || '2025-05-01',
-            poster: movieData.posterUrl || "https://placehold.co/500x750/222/white?text=No+Poster"
-          });
-        } else {
-          console.log(`快取中找不到電影: ${decodedMovieId}`);
-          // 如果快取中找不到，使用預設值
-          setMovie({
-            id: decodedMovieId,
-            name: decodedMovieId,
-            release: "2025-05-01",
-            poster: "https://placehold.co/500x750/222/white?text=No+Poster"
-          });
-        }
-      } catch (error) {
-        console.error('獲取電影資訊失敗:', error);
-        setMovie({
-          id: decodedMovieId,
-          name: decodedMovieId,
-          release: "2025-05-01",
-          poster: "https://placehold.co/500x750/222/white?text=No+Poster"
-        });
-      } finally {
-        setLoading(false);
-      }
+    if (!decodedMovieId) {
+      setMovie(DEFAULT_MOVIE); // Reset to default if no ID
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    // Initialize with decodedMovieId as name/id, poster will be empty or fallback
+    let movieDataForState: MovieInfo = { 
+      ...DEFAULT_MOVIE, 
+      id: decodedMovieId, 
+      name: decodedMovieId, 
+      poster: '' // Start with empty poster, img tag will use its fallback
     };
+
+    try {
+      // Step 1: Try fetching from our database API (e.g., /api/movies/name/:name)
+      console.log(`Fetching movie from DB: ${decodedMovieId}`);
+      const dbResponse = await fetch(`${API_URL}/api/movies/name/${encodeURIComponent(decodedMovieId)}`);
+      
+      if (dbResponse.ok) {
+        const movieFromDb = await dbResponse.json();
+        console.log('完整本地資料庫 API 回應 (/api/movies/name):', movieFromDb);
+        if (movieFromDb && (movieFromDb.full_title || movieFromDb.chinese_title)) { // 檢查 full_title 或 chinese_title 是否存在
+          const movieName = movieFromDb.chinese_title || movieFromDb.full_title || decodedMovieId;
+          console.log(`Found in DB: ${movieName}`);
+          movieDataForState = {
+            id: movieFromDb.id?.toString() || decodedMovieId,
+            name: movieName,
+            release: movieFromDb.release_date || 'N/A',
+            poster: movieFromDb.poster_url || '', // 使用後端返回的 poster_url
+          };
+          
+          if (movieFromDb.poster_url) {
+            console.log(`Using poster from DB: ${movieFromDb.poster_url}`);
+            setMovie(movieDataForState);
+            setLoading(false);
+            return; // Poster found in DB, no need to check TMDB
+          }
+          console.log('Movie found in DB, but no poster_url. Will try TMDB for poster.');
+        } else {
+          console.log(`Movie not found in DB or DB data incomplete for: ${decodedMovieId}. Will try TMDB.`);
+        }
+      } else {
+        console.log(`DB API request failed (${dbResponse.status}) for ${decodedMovieId}. Will try TMDB.`);
+      }
+
+      // Step 2: If poster not found in DB, try TMDB API (existing logic as fallback for poster)
+      // movieDataForState already holds info from DB (if found) or initial defaults
+      console.log(`Fetching from TMDB for: ${movieDataForState.name}`); // Use name from movieDataForState for matching
+      const tmdbResponse = await fetch(`${API_URL}/api/tmdb/boxoffice-with-posters`);
+      if (tmdbResponse.ok) {
+        const tmdbApiData = await tmdbResponse.json();
+        const movieFromTmdb = tmdbApiData.find((m: { title: string; posterUrl?: string; releaseDate?: string }) =>
+          isMovieNameMatch(m.title, movieDataForState.name) // Match against name (could be from DB or decodedMovieId)
+        );
+
+        if (movieFromTmdb && movieFromTmdb.posterUrl) {
+          console.log(`Found poster in TMDB: ${movieFromTmdb.posterUrl}`);
+          movieDataForState.poster = movieFromTmdb.posterUrl; // Update poster with TMDB's posterUrl (camelCase)
+          // Optionally update release date if DB didn't have it and TMDB does
+          if ((!movieDataForState.release || movieDataForState.release === 'N/A') && movieFromTmdb.releaseDate) {
+              movieDataForState.release = movieFromTmdb.releaseDate;
+          }
+        } else {
+          console.log(`Poster not found in TMDB for: ${movieDataForState.name}`);
+        }
+      } else {
+        console.error(`TMDB API request failed: ${tmdbResponse.status}`);
+      }
+
+      // Set movie state with whatever was found. 
+      // If movieDataForState.poster is '', the img tag's src fallback will be used.
+      setMovie(movieDataForState);
+
+    } catch (error) {
+      console.error('獲取電影資訊失敗 (outer catch):', error);
+      // In case of any error, set movie state to defaults with decodedMovieId
+      setMovie({
+        id: decodedMovieId,
+        name: decodedMovieId, // Display the ID/name from URL as title
+        release: 'N/A',
+        poster: '', // Let img tag fallback handle this
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
     
     fetchMovieInfo();
   }, [decodedMovieId]);
