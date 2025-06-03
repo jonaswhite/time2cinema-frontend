@@ -73,15 +73,7 @@ const ShowtimesList: React.FC<ShowtimesListProps> = ({
                   <div className="text-white text-sm font-semibold mb-2 pb-1 border-b border-neutral-800/50 flex items-center">
                     {cinema?.name || `電影院 ${cinemaId}`}
                   </div>
-                  <div className="text-neutral-500 text-sm">暫無場次資訊</div>
-                  <div className="text-neutral-400 text-xs mt-1">
-                    資料結構: {JSON.stringify({
-                      cinemaId,
-                      hasCinemaData: !!cinema,
-                      showtimesCount: cinemaShowtimes?.length || 0,
-                      showtimesKeys: cinemaShowtimes ? Object.keys(cinemaShowtimes[0] || {}) : []
-                    }, null, 2)}
-                  </div>
+                  <div className="text-neutral-500 text-xs mt-1">暫無場次資訊</div>
                 </div>
               );
             }
