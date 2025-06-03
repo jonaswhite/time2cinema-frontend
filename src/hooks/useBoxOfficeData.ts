@@ -1,9 +1,13 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { BoxOfficeMovie, DisplayMovie } from '@/lib/types/movie';
 import { formatTickets } from '@/lib/utils/format';
 import API_URL from '@/config/api';
 
-export const useBoxOfficeData = () => {
+interface UseBoxOfficeDataProps {
+  isBackendReady: boolean; // 新增參數
+}
+
+export const useBoxOfficeData = ({ isBackendReady }: UseBoxOfficeDataProps) => {
   const [boxOffice, setBoxOffice] = useState<DisplayMovie[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,10 +47,14 @@ export const useBoxOfficeData = () => {
     }
   }, []);
 
-  // 初始化加載數據
-  useState(() => {
-    fetchBoxOffice().catch(console.error);
-  });
+  useEffect(() => {
+    if (isBackendReady) { // 只有當後端準備好時才獲取數據
+      fetchBoxOffice().catch(console.error);
+    } else {
+      // 如果後端未準備好，可以選擇性地重置狀態或保持加載中
+      // setLoading(true); // 讓它保持 loading 狀態直到 backend ready
+    }
+  }, [fetchBoxOffice, isBackendReady]); // 加入 isBackendReady 到依賴項
 
   // 提供手動刷新函數
   const refetch = async () => {

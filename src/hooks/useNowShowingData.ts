@@ -3,9 +3,13 @@ import { NowShowingMovie, DisplayMovie } from '@/lib/types/movie';
 import { formatDate } from '@/lib/utils/format';
 import API_URL from '@/config/api';
 
-export const useNowShowingData = () => {
+interface UseNowShowingDataProps { // 新增 Props 接口
+  isBackendReady: boolean;
+}
+
+export const useNowShowingData = ({ isBackendReady }: UseNowShowingDataProps) => { // 接收 isBackendReady
   const [nowShowing, setNowShowing] = useState<DisplayMovie[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(true); // 初始設為 true
   const [error, setError] = useState<string | null>(null);
 
   const fetchNowShowing = useCallback(async () => {
@@ -24,7 +28,6 @@ export const useNowShowingData = () => {
       const data: NowShowingMovie[] = await response.json();
       console.log('API Response data:', data);
       
-      // 轉換數據格式
       const formattedData: DisplayMovie[] = data.map((movie: NowShowingMovie) => {
         const formattedMovie = {
           id: movie.id?.toString() || '',
@@ -54,13 +57,20 @@ export const useNowShowingData = () => {
     }
   }, []);
 
-  // 初始化加載數據
   useEffect(() => {
-    fetchNowShowing().catch(console.error);
-  }, [fetchNowShowing]);
+    if (isBackendReady) { // 只有當後端準備好時才獲取數據
+      fetchNowShowing().catch(console.error);
+    } else {
+      // 如果後端未準備好，保持 loading 狀態
+      // setLoading(true); // 確保在 isBackendReady 變為 true 之前，loading 狀態為 true
+    }
+  }, [fetchNowShowing, isBackendReady]); // 加入 isBackendReady 到依賴項
 
-  // 提供手動刷新函數
   const refetch = async () => {
+    if (!isBackendReady) { // 如果後端未準備好，refetch 不執行
+      console.warn("Backend is not ready, refetch is ignored.");
+      return;
+    }
     try {
       return await fetchNowShowing();
     } catch (err) {

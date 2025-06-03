@@ -51,6 +51,14 @@ export default function ShowtimesPage() {
   const [cinemaQuery, setCinemaQuery] = useState("");
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
   const [locationLoading, setLocationLoading] = useState(true);
+  // 控制地圖是否應該自動縮放
+  const [autoZoomEnabled, setAutoZoomEnabled] = useState(true);
+
+  // 從電影院選擇列表更新選擇時的處理函數
+  const handleCinemaSelectionFromList = (newSelection: string[] | ((prevState: string[]) => string[])) => {
+    setSelectedCinemas(newSelection);
+    setAutoZoomEnabled(true); // 從列表選擇時，啟用自動縮放
+  };
   
   // 日期標籤
   const dateTabs = React.useMemo(() => createDateTabs(), []);
@@ -596,9 +604,10 @@ export default function ShowtimesPage() {
           setSelectedCinemas={setSelectedCinemas} 
           showtimesByCinema={allShowtimesByCinema}
           userLocation={userLocation}
+          autoZoomEnabled={autoZoomEnabled}
+          onAutoZoomToggle={setAutoZoomEnabled}
         />
         
-        {/* 電影院選擇器 */}
         <CinemaSelector 
           cinemas={cinemas}
           cinemasLoading={cinemasLoading}
@@ -606,14 +615,13 @@ export default function ShowtimesPage() {
           cinemaQuery={cinemaQuery}
           setCinemaQuery={setCinemaQuery}
           selectedCinemas={selectedCinemas}
-          setSelectedCinemas={setSelectedCinemas}
+          setSelectedCinemas={handleCinemaSelectionFromList}
           filteredCinemas={filteredCinemas}
           userLocation={userLocation}
         />
         
-        {/* 場次列表 */}
         <ShowtimesList 
-          cinemas={cinemas}
+          cinemas={filteredCinemas}
           showtimes={showtimesByCinema}
           selectedCinemas={selectedCinemas}
           dateTabs={dateTabs}

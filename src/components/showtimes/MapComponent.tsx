@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Map, { Marker } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -17,6 +17,10 @@ interface MapComponentProps {
   showtimesByCinema?: Record<string, FormattedShowtime[]>; // Use specific type
   // 用戶位置
   userLocation?: {lat: number, lng: number} | null;
+  // 是否應該自動縮放到選中的電影院
+  autoZoomEnabled?: boolean;
+  // 切換自動縮放狀態的回調函數
+  onAutoZoomToggle?: (enabled: boolean) => void;
 }
 
 const MapComponent: React.FC<MapComponentProps> = ({ 
@@ -24,11 +28,14 @@ const MapComponent: React.FC<MapComponentProps> = ({
   selectedCinemas, 
   setSelectedCinemas,
   showtimesByCinema = {}, // 預設為空物件
-  userLocation = null
+  userLocation = null,
+  autoZoomEnabled = true, // 預設啟用自動縮放
+  onAutoZoomToggle
 }) => {
   const [hoverCinemaId, setHoverCinemaId] = useState<string | null>(null);
   const [hoverCinemaLngLat, setHoverCinemaLngLat] = useState<[number, number] | null>(null);
   const mapRef = useRef<any>(null);
+  const [mapInitialized, setMapInitialized] = useState(false);
 
   // 過濾出有有效座標的電影院（不再要求必須有場次）
   const cinemasWithShowtimes = React.useMemo(() => {
@@ -123,6 +130,99 @@ const MapComponent: React.FC<MapComponentProps> = ({
     }
   }, [userLocation]);
 
+  // 監聽 selectedCinemas 的變化，並根據選擇的電影院和用戶位置調整地圖視圖
+  useEffect(() => {
+    // 如果自動縮放被禁用，則不執行縮放邏輯
+    if (!autoZoomEnabled) return;
+    
+    if (mapInitialized && mapRef.current) {
+      // 如果沒有選擇任何電影院，則返回
+      if (selectedCinemas.length === 0) return;
+      
+      // 獲取所有選中的電影院
+      const selectedCinemaObjects = cinemasWithShowtimes.filter(cinema => 
+        selectedCinemas.includes(cinema.id)
+      );
+      
+      // 確保選中的電影院有座標
+      const cinemasWithCoords = selectedCinemaObjects.filter(cinema => {
+        const lat = cinema.lat ?? cinema.latitude;
+        const lng = cinema.lng ?? cinema.longitude;
+        return typeof lat === 'number' && typeof lng === 'number';
+      });
+      
+      if (cinemasWithCoords.length === 0) return;
+      
+      // 獲取所有需要顯示的點（用戶位置 + 選中的電影院）
+      const points: Array<[number, number]> = [];
+      
+      // 添加用戶位置（如果可用）
+      if (userLocation) {
+        points.push([userLocation.lng, userLocation.lat]);
+      }
+      
+      // 添加選中的電影院位置
+      cinemasWithCoords.forEach(cinema => {
+        const lat = cinema.lat ?? cinema.latitude ?? 0;
+        const lng = cinema.lng ?? cinema.longitude ?? 0;
+        points.push([lng, lat]);
+      });
+      
+      // 計算邊界
+      const lngs = points.map(p => p[0]);
+      const lats = points.map(p => p[1]);
+      
+      const bounds = {
+        minLng: Math.min(...lngs),
+        maxLng: Math.max(...lngs),
+        minLat: Math.min(...lats),
+        maxLat: Math.max(...lats)
+      };
+      
+      // 添加一些邊距
+      const padding = 0.01; // 約1公里
+      
+      // 調整地圖視圖
+      mapRef.current.fitBounds(
+        [
+          [bounds.minLng - padding, bounds.minLat - padding],
+          [bounds.maxLng + padding, bounds.maxLat + padding]
+        ],
+        {
+          padding: { top: 50, bottom: 50, left: 50, right: 50 },
+          maxZoom: 15, // 限制最大縮放級別，避免過度縮放
+          duration: 1500 // 動畫持續時間
+        }
+      );
+    }
+  }, [selectedCinemas, mapInitialized, cinemasWithShowtimes, userLocation, autoZoomEnabled]);
+  
+  // 處理地圖上電影院 marker 的點擊事件
+  const handleCinemaClick = (cinemaId: string, event: any) => {
+    // 阻止事件冒泡
+    event.stopPropagation();
+    event.originalEvent.stopPropagation();
+    
+    // 通知父組件禁用自動縮放
+    if (onAutoZoomToggle) {
+      onAutoZoomToggle(false);
+    }
+    
+    // 切換選擇狀態
+    setSelectedCinemas(prev => {
+      const newSelectedCinemas = prev.includes(cinemaId)
+        ? prev.filter(id => id !== cinemaId)
+        : [...prev, cinemaId];
+      return newSelectedCinemas;
+    });
+  };
+
+  // 地圖加載完成處理函數
+  const handleMapLoad = (event: any) => {
+    mapRef.current = event.target;
+    setMapInitialized(true);
+  };
+
   return (
     <div className="w-full h-[250px] sm:h-[300px] rounded-xl overflow-hidden border border-neutral-800">
       <Map
@@ -133,8 +233,9 @@ const MapComponent: React.FC<MapComponentProps> = ({
           latitude: center.lat,
           zoom: 11
         }}
-        style={{ width: '100%', height: '100%' }}
         mapStyle="mapbox://styles/mapbox/dark-v11"
+        style={{ width: '100%', height: '100%' }}
+        onLoad={handleMapLoad}
       >
         {/* 顯示用戶位置 */}
         {userLocation && (
@@ -165,8 +266,14 @@ const MapComponent: React.FC<MapComponentProps> = ({
               key={cinema.id}
               longitude={lng}
               latitude={lat}
-              onClick={() => {
+              onClick={(e: any) => {
+                // 阻止事件冒泡，避免觸發地圖本身的點擊事件
+                e.originalEvent.stopPropagation();
                 console.log(`點擊電影院: ${cinema.name} (ID:${cinema.id})`);
+                // 禁用自動縮放
+                if (onAutoZoomToggle) {
+                  onAutoZoomToggle(false);
+                }
                 setSelectedCinemas(prev =>
                   prev.includes(cinema.id)
                     ? prev.filter(id => id !== cinema.id)

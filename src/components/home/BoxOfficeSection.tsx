@@ -8,10 +8,12 @@ import { cn } from '@/lib/utils';
 
 interface BoxOfficeSectionProps {
   searchTerm: string;
+  isBackendReady: boolean; // 新增 prop
 }
 
-const BoxOfficeSection: React.FC<BoxOfficeSectionProps> = ({ searchTerm = '' }) => {
-  const { boxOffice, loading, error, refetch } = useBoxOfficeData();
+const BoxOfficeSection: React.FC<BoxOfficeSectionProps> = ({ searchTerm = '', isBackendReady }) => { // 接收 isBackendReady
+  // 將 isBackendReady 傳遞給 Hook
+  const { boxOffice, loading, error, refetch } = useBoxOfficeData({ isBackendReady }); 
 
   // 過濾電影
   const filteredMovies = boxOffice.filter(movie =>
@@ -21,8 +23,37 @@ const BoxOfficeSection: React.FC<BoxOfficeSectionProps> = ({ searchTerm = '' }) 
 
   // 處理重新整理
   const handleRefresh = () => {
-    refetch();
+    if (isBackendReady) { // 只有後端準備好才執行 refetch
+        refetch();
+    } else {
+        console.warn("Backend not ready, refresh is ignored.");
+    }
   };
+
+  // 如果後端未就緒且沒有在冷啟動等待畫面，則顯示一個通用的加載提示
+  // 這避免了在 isBackendReady 為 false 時，即使 loading 為 false (因為 hook 尚未執行 fetch) 也顯示 "暫無票房資料"
+  if (!isBackendReady && loading) { // loading 初始為 true，在 hook 第一次執行 fetch 前保持
+    return (
+        <div className="space-y-2">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="bg-card/80 rounded-md overflow-hidden shadow-sm flex flex-row h-[120px] w-full border border-border/20">
+              <div className="relative w-[80px] flex-shrink-0">
+                <Skeleton className="h-full w-full" />
+              </div>
+              <div className="py-3 px-4 flex flex-col justify-between flex-1">
+                <div>
+                  <Skeleton className="h-5 w-3/4 mb-1" />
+                  <Skeleton className="h-3 w-1/2" />
+                </div>
+                <div>
+                  <Skeleton className="h-3 w-1/3" />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
