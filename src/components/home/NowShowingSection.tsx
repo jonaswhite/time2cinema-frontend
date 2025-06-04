@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { RefreshCw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import MovieCard from "./MovieCard";
@@ -15,11 +15,25 @@ const NowShowingSection: React.FC<NowShowingSectionProps> = ({ searchTerm = '', 
   // 將 isBackendReady 傳遞給 Hook
   const { nowShowing, loading, error, refetch } = useNowShowingData({ isBackendReady });
 
+  // Log 原始數據順序
+  useEffect(() => {
+    if (nowShowing.length > 0) {
+      console.log('[NowShowingSection] Original nowShowing data from hook:', JSON.parse(JSON.stringify(nowShowing.map(m => ({ title: m.title, releaseDate: m.releaseDate })))));
+    }
+  }, [nowShowing]);
+
   // 過濾電影
   const filteredMovies = nowShowing.filter(movie =>
     movie.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (movie.original_title?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
   );
+
+  // Log 過濾後數據順序
+  useEffect(() => {
+    if (filteredMovies.length > 0) {
+      console.log('[NowShowingSection] Filtered movies data:', JSON.parse(JSON.stringify(filteredMovies.map(m => ({ title: m.title, releaseDate: m.releaseDate })))));
+    }
+  }, [filteredMovies]);
 
   // 處理重新整理
   const handleRefresh = () => {
