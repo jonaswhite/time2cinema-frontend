@@ -1,9 +1,13 @@
 // 電影資料介面
 export interface MovieInfo {
   id: string;
-  name: string;
+  display_title: string; // For UI display
+  full_title: string;    // Full original title
+  chinese_title: string | null;
+  english_title: string | null;
   release: string;
   poster: string;
+  tmdb_id?: number | null; // Add TMDB ID
 }
 
 // 電影院資料介面
@@ -26,7 +30,11 @@ export interface Cinema {
 // 場次資料介面 (來自後端 API 的原始場次結構)
 export interface Showtime {
   movie_id: string | number; // 電影 ID
-  movie_name?: string;      // 電影名稱 (可能無)
+  movie_name?: string;      // @deprecated - use movie_display_title or other specific title fields. 電影名稱 (可能無)
+  movie_full_title?: string;
+  movie_chinese_title?: string | null;
+  movie_english_title?: string | null;
+  movie_display_title?: string; // Preferred field for movie title in showtime context
   time: string;             // 場次時間 (HH:MM)
   type?: string;            // 版本 (e.g., "數位", "IMAX", "3D") - 主要來自 attributes
   link?: string;            // 相關連結 (例如到 EZ訂的資訊頁)
@@ -45,7 +53,7 @@ export interface Showtime {
 export interface FormattedShowtime {
   id: string;                 // React key 的唯一 ID (通常是組合建構)
   movie_id: string;           // 電影 ID
-  movie_name: string;         // 電影名稱
+  movie_display_title: string; // 電影顯示名稱
   theater_id: string;         // 電影院 ID
   theater_name: string;       // 電影院名稱
   date: string;               // 日期 (YYYY-MM-DD)
@@ -89,7 +97,10 @@ export interface ShowtimesByDate {
 // 預設電影資料
 export const DEFAULT_MOVIE: MovieInfo = {
   id: "default",
-  name: "電影資訊載入中...",
+  display_title: "電影資訊載入中...",
+  full_title: "電影資訊載入中...",
+  chinese_title: null,
+  english_title: null,
   release: "-",
   poster: "https://placehold.co/500x750/222/white?text=Loading"
 };

@@ -16,10 +16,15 @@ const BoxOfficeSection: React.FC<BoxOfficeSectionProps> = ({ searchTerm = '', is
   const { boxOffice, loading, error, refetch } = useBoxOfficeData({ isBackendReady }); 
 
   // 過濾電影
-  const filteredMovies = boxOffice.filter(movie =>
-    movie.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (movie.original_title?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
-  );
+  const filteredMovies = boxOffice.filter(movie => {
+    const searchTermLower = searchTerm.toLowerCase();
+    return (
+      movie.display_title?.toLowerCase().includes(searchTermLower) ||
+      movie.full_title?.toLowerCase().includes(searchTermLower) ||
+      (movie.english_title && movie.english_title.toLowerCase().includes(searchTermLower)) ||
+      (movie.chinese_title && movie.chinese_title.toLowerCase().includes(searchTermLower))
+    );
+  });
 
   // 處理重新整理
   const handleRefresh = () => {

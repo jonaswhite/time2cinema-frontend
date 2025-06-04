@@ -18,20 +18,25 @@ const NowShowingSection: React.FC<NowShowingSectionProps> = ({ searchTerm = '', 
   // Log 原始數據順序
   useEffect(() => {
     if (nowShowing.length > 0) {
-      console.log('[NowShowingSection] Original nowShowing data from hook:', JSON.parse(JSON.stringify(nowShowing.map(m => ({ title: m.title, releaseDate: m.releaseDate })))));
+      console.log('[NowShowingSection] Original nowShowing data from hook:', JSON.parse(JSON.stringify(nowShowing.map(m => ({ display_title: m.display_title, releaseDate: m.releaseDate })))));
     }
   }, [nowShowing]);
 
   // 過濾電影
-  const filteredMovies = nowShowing.filter(movie =>
-    movie.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (movie.original_title?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
-  );
+  const filteredMovies = nowShowing.filter(movie => {
+    const searchTermLower = searchTerm.toLowerCase();
+    return (
+      movie.display_title?.toLowerCase().includes(searchTermLower) ||
+      movie.full_title?.toLowerCase().includes(searchTermLower) ||
+      (movie.english_title && movie.english_title.toLowerCase().includes(searchTermLower)) ||
+      (movie.chinese_title && movie.chinese_title.toLowerCase().includes(searchTermLower))
+    );
+  });
 
   // Log 過濾後數據順序
   useEffect(() => {
     if (filteredMovies.length > 0) {
-      console.log('[NowShowingSection] Filtered movies data:', JSON.parse(JSON.stringify(filteredMovies.map(m => ({ title: m.title, releaseDate: m.releaseDate })))));
+      console.log('[NowShowingSection] Filtered movies data:', JSON.parse(JSON.stringify(filteredMovies.map(m => ({ display_title: m.display_title, releaseDate: m.releaseDate })))));
     }
   }, [filteredMovies]);
 

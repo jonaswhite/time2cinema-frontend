@@ -13,12 +13,15 @@ import {
   MovieInfo, 
   DEFAULT_MOVIE,
   FormattedShowtime,
-  Showtime // Added Showtime import
+  Showtime 
 } from '@/components/showtimes/types';
+import { fetchTmdbPoster } from '@/lib/tmdb';
 import { formatDateKey, createDateTabs, findCinemasWithShowtimes, getDateLabel } from '@/components/showtimes/utils';
 import MapComponent from '@/components/showtimes/MapComponent';
 import CinemaSelector from '@/components/showtimes/CinemaSelector';
 import ShowtimesList from '@/components/showtimes/ShowtimesList';
+
+const placeholderImage = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyMDAgMzAwIiBzdHlsZT0iYmFja2dyb3VuZC1jb2xvcjojMjIyOyI+PHJlY3Qgd2lkdGg9IjIwMCIgaGVpZ2h0PSIzMDAiIGZpbGw9IiMzMzMiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmaWxsPSIjNjY2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBhbGlnbm1lbnQtYmFzZWxpbmU9Im1pZGRsZSI+Tm8gUG9zdGVyIEF2YWlsYWJsZTwvdGV4dD48L3N2Zz4=';
 
 // Define RawTheaterData for normalizing theater data from various possible structures
 interface RawTheaterData {
@@ -149,97 +152,125 @@ export default function ShowtimesPage() {
   // 獲取電影資訊
   useEffect(() => {
     const fetchMovieInfo = async () => {
-    if (!decodedMovieId) {
-      setMovie(DEFAULT_MOVIE); // Reset to default if no ID
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    // Initialize with decodedMovieId as name/id, poster will be empty or fallback
-    let movieDataForState: MovieInfo = { 
-      ...DEFAULT_MOVIE, 
-      id: decodedMovieId, 
-      name: decodedMovieId, 
-      poster: '' // Start with empty poster, img tag will use its fallback
-    };
-
-    try {
-      // Step 1: Try fetching from our database API (e.g., /api/movies/name/:name)
-      console.log(`Fetching movie from DB: ${decodedMovieId}`);
-      const dbResponse = await fetch(`${API_URL}/api/movies/name/${encodeURIComponent(decodedMovieId)}`);
-      
-      if (dbResponse.ok) {
-        const movieFromDb = await dbResponse.json();
-        console.log('完整本地資料庫 API 回應 (/api/movies/name):', movieFromDb);
-        if (movieFromDb && (movieFromDb.full_title || movieFromDb.chinese_title)) { // 檢查 full_title 或 chinese_title 是否存在
-          const movieName = movieFromDb.chinese_title || movieFromDb.full_title || decodedMovieId;
-          console.log(`Found in DB: ${movieName}`);
-          movieDataForState = {
-            id: movieFromDb.id?.toString() || decodedMovieId,
-            name: movieName,
-            release: movieFromDb.release_date || 'N/A',
-            poster: movieFromDb.poster_url || '', // 使用後端返回的 poster_url
-          };
-          
-          if (movieFromDb.poster_url) {
-            console.log(`Using poster from DB: ${movieFromDb.poster_url}`);
-            setMovie(movieDataForState);
-            setLoading(false);
-            return; // Poster found in DB, no need to check TMDB
-          }
-          console.log('Movie found in DB, but no poster_url. Will try TMDB for poster.');
-        } else {
-          console.log(`Movie not found in DB or DB data incomplete for: ${decodedMovieId}. Will try TMDB.`);
-        }
-      } else {
-        console.log(`DB API request failed (${dbResponse.status}) for ${decodedMovieId}. Will try TMDB.`);
+      if (!decodedMovieId) {
+        setMovie({...DEFAULT_MOVIE, poster: placeholderImage });
+        setLoading(false);
+        return;
       }
 
-      // Step 2: If poster not found in DB, try TMDB API (existing logic as fallback for poster)
-      // movieDataForState already holds info from DB (if found) or initial defaults
-      console.log(`Fetching from TMDB for: ${movieDataForState.name}`); // Use name from movieDataForState for matching
-      const tmdbResponse = await fetch(`${API_URL}/api/tmdb/boxoffice-with-posters`);
-      if (tmdbResponse.ok) {
-        const tmdbApiData = await tmdbResponse.json();
-        const movieFromTmdb = tmdbApiData.find((m: { title: string; posterUrl?: string; releaseDate?: string }) =>
-          isMovieNameMatch(m.title, movieDataForState.name) // Match against name (could be from DB or decodedMovieId)
-        );
-
-        if (movieFromTmdb && movieFromTmdb.posterUrl) {
-          console.log(`Found poster in TMDB: ${movieFromTmdb.posterUrl}`);
-          movieDataForState.poster = movieFromTmdb.posterUrl; // Update poster with TMDB's posterUrl (camelCase)
-          // Optionally update release date if DB didn't have it and TMDB does
-          if ((!movieDataForState.release || movieDataForState.release === 'N/A') && movieFromTmdb.releaseDate) {
-              movieDataForState.release = movieFromTmdb.releaseDate;
-          }
-        } else {
-          console.log(`Poster not found in TMDB for: ${movieDataForState.name}`);
-        }
-      } else {
-        console.error(`TMDB API request failed: ${tmdbResponse.status}`);
-      }
-
-      // Set movie state with whatever was found. 
-      // If movieDataForState.poster is '', the img tag's src fallback will be used.
-      setMovie(movieDataForState);
-
-    } catch (error) {
-      console.error('獲取電影資訊失敗 (outer catch):', error);
-      // In case of any error, set movie state to defaults with decodedMovieId
-      setMovie({
+      setLoading(true);
+      let movieDataForState: MovieInfo = {
+        ...DEFAULT_MOVIE, // Spreads display_title, full_title, etc. from DEFAULT_MOVIE
         id: decodedMovieId,
-        name: decodedMovieId, // Display the ID/name from URL as title
-        release: 'N/A',
-        poster: '', // Let img tag fallback handle this
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-    
+        // If decodedMovieId is a meaningful name, we might set it as a display_title fallback here,
+        // but DEFAULT_MOVIE already provides "電影資訊載入中..."
+        poster: '' // Initialize poster as empty, will be filled by fetching logic or placeholder
+      };
+
+      try {
+        // Step 1: Try fetching from our database API
+        console.log(`Fetching movie from DB: ${decodedMovieId}`);
+        const dbResponse = await fetch(`${API_URL}/api/movies/name/${encodeURIComponent(decodedMovieId)}`);
+
+        if (dbResponse.ok) {
+          const movieFromDb = await dbResponse.json();
+          if (movieFromDb && (movieFromDb.full_title || movieFromDb.chinese_title)) {
+            const display_title = movieFromDb.chinese_title || movieFromDb.full_title || decodedMovieId;
+            movieDataForState = {
+              id: movieFromDb.id?.toString() || decodedMovieId,
+              display_title: display_title,
+              full_title: movieFromDb.full_title || '', // Ensure full_title is a string
+              chinese_title: movieFromDb.chinese_title || null,
+              english_title: movieFromDb.english_title || null,
+              release: movieFromDb.release_date || 'N/A',
+              poster: movieFromDb.poster_url || '', // Use poster_url from DB if available
+            };
+            // If DB provides a poster, we might still want to check TMDB if it's better or as a primary source for posters.
+            // For now, if poster_url exists, we assume it's good enough to potentially skip further TMDB checks for this specific step.
+            // However, the logic below will still run if movieDataForState.poster remains empty.
+            if (movieFromDb.poster_url) {
+              console.log(`Poster from DB: ${movieFromDb.poster_url}`);
+              // We will continue to potentially overwrite with TMDB if poster is still empty or if we decide TMDB is preferred.
+            }
+          } else {
+            console.log(`Movie not found in DB or DB data incomplete for: ${decodedMovieId}.`);
+          }
+        } else {
+          console.log(`DB API request failed (${dbResponse.status}) for ${decodedMovieId}.`);
+        }
+
+        // Step 2: If poster is still missing or we want to prioritize TMDB, try existing TMDB API endpoint
+        // This logic might be redundant if fetchTmdbPoster is comprehensive enough, but kept for now.
+        if (!movieDataForState.poster) { 
+          console.log(`Fetching from existing TMDB endpoint for: ${movieDataForState.display_title}`);
+          const tmdbLegacyResponse = await fetch(`${API_URL}/api/tmdb/boxoffice-with-posters`);
+          if (tmdbLegacyResponse.ok) {
+            const tmdbApiData = await tmdbLegacyResponse.json();
+            const titleToMatchLegacyTmdb = movieDataForState.full_title || movieDataForState.display_title;
+            const movieFromTmdb = tmdbApiData.find((m: { title: string; posterUrl?: string; releaseDate?: string }) =>
+              isMovieNameMatch(m.title, titleToMatchLegacyTmdb)
+            );
+            if (movieFromTmdb && movieFromTmdb.posterUrl) {
+              console.log(`Found poster in existing TMDB endpoint: ${movieFromTmdb.posterUrl}`);
+              movieDataForState.poster = movieFromTmdb.posterUrl;
+              if ((!movieDataForState.release || movieDataForState.release === 'N/A') && movieFromTmdb.releaseDate) {
+                movieDataForState.release = movieFromTmdb.releaseDate;
+              }
+            }
+          } else {
+            console.error(`Existing TMDB API endpoint request failed: ${tmdbLegacyResponse.status}`);
+          }
+        }
+
+        // Step 3: NEW - If poster is STILL missing, try fetchTmdbPoster utility
+        if (!movieDataForState.poster) {
+          console.log(`Poster still missing, trying fetchTmdbPoster utility for: ${movieDataForState.display_title}`);
+          try {
+            const tmdbUtilPoster = await fetchTmdbPoster(
+                {
+                  chinese_title: movieDataForState.chinese_title,
+                  english_title: movieDataForState.english_title,
+                  full_title: movieDataForState.full_title
+                },
+                movieDataForState.tmdb_id // Assumes tmdb_id is on movieDataForState
+              );
+            if (tmdbUtilPoster) {
+              console.log(`Found poster via fetchTmdbPoster utility: ${tmdbUtilPoster}`);
+              movieDataForState.poster = tmdbUtilPoster;
+            }
+          } catch (tmdbUtilError) {
+            console.error("Error calling fetchTmdbPoster utility:", movieDataForState.display_title, tmdbUtilError);
+          }
+        }
+
+        // Final poster assignment: if still no poster after all attempts, use placeholderImage
+        if (!movieDataForState.poster) {
+          movieDataForState.poster = placeholderImage;
+        }
+
+        setMovie(movieDataForState);
+        if (movieDataForState.display_title && movieDataForState.display_title !== DEFAULT_MOVIE.display_title) {
+          document.title = `${movieDataForState.display_title} - 上映場次 | Time2Cinema`;
+        }
+
+      } catch (error) {
+        console.error('獲取電影資訊失敗 (outer catch):', error);
+        setMovie({
+          ...DEFAULT_MOVIE,
+          id: decodedMovieId, 
+          display_title: decodedMovieId, // Fallback to decodedMovieId if it's a name
+          full_title: decodedMovieId,    // Or consider a generic error message / empty string
+          chinese_title: null,
+          english_title: null,
+          poster: placeholderImage, // Ensure placeholder on error
+        });
+      } finally {
+        setLoading(false);
+      }
+    }; // end of fetchMovieInfo async function
+
     fetchMovieInfo();
-  }, [decodedMovieId]);
+  }, [decodedMovieId]); // end of useEffect
   
   // 獲取電影院資料
   useEffect(() => {
@@ -519,7 +550,7 @@ export default function ShowtimesPage() {
                 ...st, 
                 id: st.id ? String(st.id) : `${theaterId}-${selectedDateString}-${st.time}-${st_idx}`, // Ensure id is string and unique
                 movie_id: String(st.movie_id || decodedMovieId), // Ensure movie_id is string
-                movie_name: st.movie_name || movie?.name || "未知電影", 
+                movie_display_title: st.movie_display_title || st.movie_name || movie?.display_title || "未知電影", 
                 theater_id: theaterId, 
                 theater_name: theaterName, 
                 date: selectedDateString, // Correct: use selectedDateString (which is dateGroup.date)
@@ -574,23 +605,64 @@ export default function ShowtimesPage() {
     }
   }, [allShowtimesByCinema, selectedCinemas]);
 
+  // 測試函數：獲取特定電影的海報
+  const testFetchRobotPoster = async () => {
+    try {
+      console.log('開始測試「再見機器人」海報獲取...');
+      const posterUrl = await fetchTmdbPoster(
+        {
+          chinese_title: '再見機器人',
+          english_title: 'Robot Dreams'
+        }
+        // tmdb_id is likely unknown in this specific test context
+      );
+      console.log('「再見機器人」海報URL:', posterUrl);
+      
+      if (posterUrl) {
+        alert(`成功獲取海報: ${posterUrl}`);
+      } else {
+        alert('無法找到「再見機器人」的海報');
+      }
+    } catch (error) {
+      console.error('測試海報獲取時出錯:', error);
+      alert('測試海報獲取時出錯，請查看控制台');
+    }
+  };
+
   return (
-    <main className="flex min-h-screen flex-col items-center px-4 md:px-8 py-6 bg-black text-white">
+    <div className="min-h-screen bg-gray-100">
+      {/* 測試按鈕 - 僅在開發環境顯示 */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <button 
+            onClick={testFetchRobotPoster}
+            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full shadow-lg"
+            title="測試「再見機器人」海報獲取"
+          >
+            測試「再見機器人」海報
+          </button>
+        </div>
+      )}
+      <main className="flex min-h-screen flex-col items-center px-4 md:px-8 py-6 bg-black text-white">
       <div className="w-full max-w-lg mx-auto flex items-center mb-6 md:mb-8">
         <Button variant="outline" onClick={() => router.push('/')} className="mr-4 text-sm py-1 px-3">
           返回
         </Button>
         <div className="flex-1">
-          <h1 className="text-xl md:text-2xl font-bold truncate">{movie.name}</h1>
+          <h1 className="text-xl md:text-2xl font-bold truncate">{movie.display_title}</h1>
         </div>
         <div className="w-16 md:w-20 h-24 md:h-30 overflow-hidden rounded-md shadow-lg">
           <img 
-            src={movie.poster || 'https://image.tmdb.org/t/p/w500/pWJW4c8jHRw0X0FMiRfvOUXKGgf.jpg'} 
-            alt={movie.name} 
+            src={movie.poster || placeholderImage} 
+            alt={movie.display_title} 
             className="w-full h-full object-cover" 
             onError={(e) => {
-              // 如果圖片載入失敗，使用預設圖片
-              e.currentTarget.src = 'https://image.tmdb.org/t/p/w500/pWJW4c8jHRw0X0FMiRfvOUXKGgf.jpg';
+              const target = e.target as HTMLImageElement;
+              // Only set to placeholder if it's not already the placeholder
+              if (target.src !== placeholderImage) {
+                target.src = placeholderImage;
+              }
+              target.onerror = null; // Prevent infinite loop if placeholder itself fails
             }}
           />
         </div>
@@ -629,6 +701,7 @@ export default function ShowtimesPage() {
           setSelectedDateIdx={setSelectedDateIdx}
         />
       </div>
-    </main>
+      </main>
+    </div>
   );
 }

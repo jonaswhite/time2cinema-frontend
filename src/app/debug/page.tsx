@@ -5,9 +5,13 @@ import API_URL from '@/config/api';
 
 // 定義電影資料的介面
 interface BoxOfficeMovie {
-  title: string;
-  releaseDate?: string;
-  posterUrl?: string;
+  id: number;
+  full_title: string;
+  chinese_title: string | null;
+  english_title: string | null;
+  release_date: string;
+  total_gross: number;
+  poster_path: string | null;
   [key: string]: any; // 允許其他屬性
 }
 
@@ -127,7 +131,7 @@ export default function DebugPage() {
               // 最後嘗試 /api/showtimes/movie/{movieId} 路徑
               // 使用第一部票房電影作為測試
               if (boxOfficeData.length > 0) {
-                const testMovieId = encodeURIComponent(boxOfficeData[0].title);
+                const testMovieId = encodeURIComponent(boxOfficeData[0].full_title || '');
                 showtimesUrl = `${API_URL}/api/showtimes/movie/${testMovieId}?date=${formattedDate}`;
                 console.log('嘗試場次 API URL (3):', showtimesUrl);
                 
@@ -192,7 +196,7 @@ export default function DebugPage() {
         
         // 計算匹配結果
         const results = boxOfficeData.map((boxOfficeMovie: BoxOfficeMovie) => {
-          const movieName = boxOfficeMovie.title;
+          const movieName = boxOfficeMovie.full_title || (boxOfficeMovie.chinese_title || '');
           let bestMatch = null;
           let bestScore = 0;
           
@@ -219,7 +223,7 @@ export default function DebugPage() {
         setMatchResults(results);
         
         // 找出有場次但不在票房榜上的電影
-        const boxOfficeMovieNames = boxOfficeData.map((m: BoxOfficeMovie) => m.title);
+        const boxOfficeMovieNames = boxOfficeData.map((m: BoxOfficeMovie) => m.full_title || (m.chinese_title || ''));
         
         const unmatchedShowtimeMovies = showtimeMoviesList.filter(showtimeMovie => {
           return !boxOfficeMovieNames.some((boxOfficeMovie: string) => 
@@ -326,7 +330,7 @@ export default function DebugPage() {
                   <h3 className="font-semibold">{result.boxOfficeMovie}</h3>
                   {result.match ? (
                     <div className="text-green-400">
-                      <p>✓ 匹配到: {result.match.name}</p>
+                      <p>✓ 匹配到: {result.match.display_title}</p>
                       <p className="text-xs">分數: {result.match.score}, {result.match.reason}</p>
                     </div>
                   ) : (
