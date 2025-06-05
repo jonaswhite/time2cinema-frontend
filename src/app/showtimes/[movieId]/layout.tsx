@@ -1,5 +1,17 @@
 import { Metadata } from 'next';
-import { getMovieById } from '@/lib/api';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4002';
+
+type MovieInfo = {
+  id: number;
+  display_title: string;
+  chinese_title?: string;
+  english_title?: string;
+  synopsis?: string;
+  poster_url?: string;
+  release_date?: string;
+  duration?: number;
+};
 
 type Props = {
   params: { movieId: string };
@@ -8,7 +20,21 @@ type Props = {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // 從 API 獲取電影詳情
-  const movie = await getMovieById(params.movieId);
+  let movie: MovieInfo | null = null;
+  
+  try {
+    const decodedMovieId = decodeURIComponent(params.movieId);
+    const response = await fetch(`${API_URL}/api/movies/name/${encodeURIComponent(decodedMovieId)}`);
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data && data.length > 0) {
+        movie = data[0];
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching movie info:', error);
+  }
   
   if (!movie) {
     return {
