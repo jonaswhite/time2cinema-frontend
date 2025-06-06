@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+// 使用標準 img 標籤替代 next/image
 import { Button } from "@/components/ui/button";
 import API_URL from "@/config/api";
 
@@ -651,18 +652,16 @@ export default function ShowtimesPage() {
         <div className="flex-1">
           <h1 className="text-xl md:text-2xl font-bold truncate">{movie.display_title}</h1>
         </div>
-        <div className="w-16 md:w-20 h-24 md:h-30 overflow-hidden rounded-md shadow-lg">
+        <div className="w-16 md:w-20 h-24 md:h-30 overflow-hidden rounded-md shadow-lg relative">
           <img 
             src={movie.poster || placeholderImage} 
             alt={movie.display_title} 
-            className="w-full h-full object-cover" 
+            className="absolute inset-0 w-full h-full object-cover"
+            loading="lazy"
             onError={(e) => {
+              // 當圖片載入失敗時，使用預設圖片
               const target = e.target as HTMLImageElement;
-              // Only set to placeholder if it's not already the placeholder
-              if (target.src !== placeholderImage) {
-                target.src = placeholderImage;
-              }
-              target.onerror = null; // Prevent infinite loop if placeholder itself fails
+              target.src = placeholderImage;
             }}
           />
         </div>
