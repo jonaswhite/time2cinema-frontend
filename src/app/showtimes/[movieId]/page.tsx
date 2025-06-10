@@ -9,12 +9,12 @@ import API_URL from "@/config/api";
 
 // 導入拆分出的組件和類型
 import { 
-  Cinema, 
-  TheaterShowtimes, 
   MovieInfo, 
   DEFAULT_MOVIE,
-  FormattedShowtime,
-  Showtime 
+  Showtime,
+  Cinema,
+  TheaterShowtimes,
+  FormattedShowtime
 } from '@/components/showtimes/types';
 import { fetchTmdbPoster } from '@/lib/tmdb';
 import { formatDateKey, createDateTabs, findCinemasWithShowtimes, getDateLabel } from '@/components/showtimes/utils';
@@ -36,6 +36,75 @@ interface RawTheaterData {
   // any other properties that might be encountered before normalization
   [key: string]: any; // Allow other properties to avoid type errors if unexpected fields exist
 }
+
+// Define a type for the movie data fetched from the API for metadata
+interface MovieMetaData {
+  id?: string;
+  display_title?: string;
+  full_title?: string;
+  chinese_title?: string;
+  english_title?: string;
+  release_date?: string;
+  poster_url?: string;
+  overview?: string;
+  genres?: string[];
+  director?: string;
+  actors?: string[];
+}
+
+type Props = {
+  params: { movieId: string };
+  searchParams: { [key: string]: string | string[] | undefined };
+};
+
+const generateMovieJsonLd = (movieData: MovieInfo, pageUrl: string) => {
+  const schema: any = {
+    "@context": "https://schema.org",
+    "@type": "Movie",
+    "name": movieData.display_title || movieData.chinese_title || movieData.full_title,
+    "url": pageUrl,
+  };
+
+  if (movieData.english_title && movieData.english_title !== schema.name) {
+    schema.alternateName = movieData.english_title;
+  }
+  if (movieData.overview) {
+    schema.description = movieData.overview;
+  }
+  if (movieData.poster && movieData.poster !== placeholderImage) { // Avoid using placeholder for schema image
+    schema.image = movieData.poster;
+  }
+  if (movieData.release && movieData.release !== 'N/A') {
+    schema.datePublished = movieData.release;
+  }
+  // Assuming movieData.director is a string (name of director)
+  if (movieData.director) {
+    schema.director = {
+      "@type": "Person",
+      "name": movieData.director
+    };
+  }
+  // Assuming movieData.actors is an array of strings (names of actors)
+  if (movieData.actors && movieData.actors.length > 0) {
+    schema.actor = movieData.actors.map((actorName: string) => ({
+      "@type": "Person",
+      "name": actorName
+    }));
+  }
+  if (movieData.genres && movieData.genres.length > 0) {
+    schema.genre = movieData.genres;
+  }
+  // Placeholder for AggregateRating - this would typically come from your data
+  // if (movieData.ratingValue && movieData.ratingCount) {
+  //   schema.aggregateRating = {
+  //     "@type": "AggregateRating",
+  //     "ratingValue": movieData.ratingValue,
+  //     "reviewCount": movieData.ratingCount
+  //   };
+  // }
+
+  return schema;
+};
 
 export default function ShowtimesPage() {
   const router = useRouter();
@@ -165,7 +234,11 @@ export default function ShowtimesPage() {
         id: decodedMovieId,
         // If decodedMovieId is a meaningful name, we might set it as a display_title fallback here,
         // but DEFAULT_MOVIE already provides "電影資訊載入中..."
-        poster: '' // Initialize poster as empty, will be filled by fetching logic or placeholder
+        poster: '', // Initialize poster as empty, will be filled by fetching logic or placeholder
+        overview: undefined,
+        genres: undefined,
+        director: undefined,
+        actors: undefined
       };
 
       try {
@@ -185,6 +258,11 @@ export default function ShowtimesPage() {
               english_title: movieFromDb.english_title || null,
               release: movieFromDb.release_date || 'N/A',
               poster: movieFromDb.poster_url || '', // Use poster_url from DB if available
+              // Enrich with additional fields for JSON-LD and potential display
+              overview: movieFromDb.overview || undefined,
+              genres: movieFromDb.genres || undefined,
+              director: movieFromDb.director || undefined,
+              actors: movieFromDb.actors || undefined,
             };
             // If DB provides a poster, we might still want to check TMDB if it's better or as a primary source for posters.
             // For now, if poster_url exists, we assume it's good enough to potentially skip further TMDB checks for this specific step.
@@ -255,17 +333,6 @@ export default function ShowtimesPage() {
         }
 
       } catch (error) {
-        console.error('獲取電影資訊失敗 (outer catch):', error);
-        setMovie({
-          ...DEFAULT_MOVIE,
-          id: decodedMovieId, 
-          display_title: decodedMovieId, // Fallback to decodedMovieId if it's a name
-          full_title: decodedMovieId,    // Or consider a generic error message / empty string
-          chinese_title: null,
-          english_title: null,
-          poster: placeholderImage, // Ensure placeholder on error
-        });
-      } finally {
         setLoading(false);
       }
     }; // end of fetchMovieInfo async function
@@ -630,8 +697,19 @@ export default function ShowtimesPage() {
     }
   };
 
+  const siteUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  const pageUrl = `${siteUrl}/showtimes/${encodeURIComponent(decodedMovieId)}`;
+
   return (
-    <div className="min-h-screen bg-gray-100">
+    <>
+      {/* JSON-LD Script for Movie Schema */}
+      {movie && movie.id && movie.display_title !== DEFAULT_MOVIE.display_title && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(generateMovieJsonLd(movie, pageUrl)) }}
+        />
+      )}
+      <div className="min-h-screen bg-gray-100">
       {/* 測試按鈕 - 僅在開發環境顯示 */}
       {process.env.NODE_ENV === 'development' && (
         <div className="fixed bottom-4 right-4 z-50">
@@ -702,5 +780,6 @@ export default function ShowtimesPage() {
       </div>
       </main>
     </div>
+    </>
   );
 }

@@ -8,6 +8,10 @@ export interface MovieInfo {
   release: string;
   poster: string;
   tmdb_id?: number | null; // Add TMDB ID
+  overview?: string;
+  genres?: string[];
+  director?: string;
+  actors?: string[];
 }
 
 // 電影院資料介面
@@ -102,7 +106,11 @@ export const DEFAULT_MOVIE: MovieInfo = {
   chinese_title: null,
   english_title: null,
   release: "-",
-  poster: "https://placehold.co/500x750/222/white?text=Loading"
+  poster: "https://placehold.co/500x750/222/white?text=Loading",
+  overview: undefined,
+  genres: undefined,
+  director: undefined,
+  actors: undefined
 };
 
 // 日期標籤類型
