@@ -549,22 +549,48 @@ export default function ShowtimesPage() {
         console.log('從場次資料中直接建立電影院列表');
         
         // 建立一個 Map 來去除重複的電影院
-        const cinemaMap = new Map();
-        
+        const cinemaMap = new Map<string, Cinema>(); // Key is string ID, value is Cinema object
+
         showtimes.forEach(theater => {
-          if (theater && theater.theaterId && theater.theaterName) {
-            cinemaMap.set(theater.theaterId, {
-              id: theater.theaterId,
-              name: theater.theaterName,
-              address: '',
-              latitude: 25.0330, // 預設台北市座標
-              longitude: 121.5654
-            });
+          // Handle potential variations in theater ID and name properties
+          const currentTheaterId = theater?.theaterId || theater?.theater_id;
+          const currentTheaterName = theater?.theaterName || theater?.theater_name;
+
+          if (currentTheaterId && currentTheaterName) {
+            const theaterIdStr = String(currentTheaterId);
+            // Find the full cinema object from the main 'cinemas' state
+            // The 'cinemas' state should already have 'lat' and 'lng' populated by the API
+            const fullCinemaData = cinemas.find(c => String(c.id) === theaterIdStr);
+
+            if (fullCinemaData) {
+              // Use the found cinema object. It should already have lat/lng from the /api/cinemas call.
+              cinemaMap.set(theaterIdStr, fullCinemaData);
+            } else {
+              // This case means a cinema ID from showtimes data isn't in the main cinemas list.
+              // This indicates a data inconsistency. For robustness, create a placeholder with default coords and log prominently.
+              console.warn(`警告: 在 'cinemas' 狀態中找不到 ID 為 ${theaterIdStr} 的電影院 (${currentTheaterName}). 將使用預設座標.`);
+              cinemaMap.set(theaterIdStr, {
+                id: theaterIdStr,
+                name: currentTheaterName,
+                address: '', // Address will be missing
+                latitude: 25.0330, // Default Taipei coordinates
+                longitude: 121.5654,
+                lat: 25.0330,
+                lng: 121.5654,
+                // Populate other fields from Cinema interface with defaults or undefined
+                city: undefined,
+                district: undefined,
+                type: undefined,
+                special: undefined,
+                showtimes: [], // Or undefined, depending on how Cinema type is used
+                distance: undefined,
+              });
+            }
           }
         });
         
         const cinemasFromShowtimes = Array.from(cinemaMap.values());
-        console.log(`從場次資料中建立了 ${cinemasFromShowtimes.length} 個電影院`);
+        console.log(`從場次資料中建立了 ${cinemasFromShowtimes.length} 個電影院 (已嘗試使用真實座標)`);
         return cinemasFromShowtimes;
       }
       
