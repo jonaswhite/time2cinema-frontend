@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { BoxOfficeMovie, DisplayMovie } from '@/lib/types/movie';
 import { formatTickets } from '@/lib/utils/format';
-import API_URL from '@/config/api';
+import API_URL from '@/lib/api';
 import { fetchTmdbPoster } from '@/lib/tmdb';
 
 interface UseBoxOfficeDataProps {

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import API_URL from "@/config/api";
+import API_URL from "@/lib/api";
 
 // 導入拆分出的組件和類型
 import { 

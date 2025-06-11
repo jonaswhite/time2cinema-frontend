@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import BoxOfficeSection from "@/components/home/BoxOfficeSection";
 import NowShowingSection from "@/components/home/NowShowingSection";
 import { SearchBar } from '@/components/ui/search-bar';
-import API_URL from '@/config/api'; // 確保引入 API_URL
+import API_URL from '@/lib/api'; // 確保引入 API_URL
 
 // 電影小知識陣列
 const movieFacts = [
