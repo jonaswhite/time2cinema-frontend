@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 // 使用標準 img 標籤替代 next/image
@@ -18,7 +18,7 @@ import {
 } from '@/components/showtimes/types';
 import { fetchTmdbPoster } from '@/lib/tmdb';
 import { formatDateKey, createDateTabs, findCinemasWithShowtimes, getDateLabel } from '@/components/showtimes/utils';
-import MapComponent from '@/components/showtimes/MapComponent';
+import MapComponent, { MapComponentRef } from "@/components/showtimes/MapComponent";
 import CinemaSelector from '@/components/showtimes/CinemaSelector';
 import ShowtimesList from '@/components/showtimes/ShowtimesList';
 
@@ -126,12 +126,28 @@ export default function ShowtimesPage() {
   const [locationLoading, setLocationLoading] = useState(true);
   // 控制地圖是否應該自動縮放
   const [autoZoomEnabled, setAutoZoomEnabled] = useState(true);
+  const mapRef = useRef<MapComponentRef>(null);
 
   // 從電影院選擇列表更新選擇時的處理函數
   const handleCinemaSelectionFromList = (newSelection: string[] | ((prevState: string[]) => string[])) => {
     setSelectedCinemas(newSelection);
     setAutoZoomEnabled(true); // 從列表選擇時，啟用自動縮放
   };
+  
+  // 處理電影院點擊事件，觸發地圖縮放
+  const handleCinemaClick = useCallback((cinemaIds: string[]) => {
+    console.log('[handleCinemaClick] 選中的電影院 ID 列表:', cinemaIds);
+    console.log('[handleCinemaClick] mapRef.current:', mapRef.current);
+    
+    if (mapRef.current && cinemaIds.length > 0) {
+      console.log('[handleCinemaClick] 呼叫 flyToCinema 方法，電影院數量:', cinemaIds.length);
+      mapRef.current.flyToCinema(cinemaIds);
+    } else if (cinemaIds.length === 0) {
+      console.log('[handleCinemaClick] 沒有選中的電影院，不執行縮放');
+    } else {
+      console.error('[handleCinemaClick] 錯誤: mapRef.current 為空');
+    }
+  }, []);
   
   // 日期標籤
   const dateTabs = React.useMemo(() => createDateTabs(), []);
@@ -352,7 +368,6 @@ export default function ShowtimesPage() {
         }
         
         const data = await response.json();
-        console.log(`成功獲取 ${data.length} 間電影院資料`);
         setCinemas(data);
       } catch (error) {
         console.error('獲取電影院資料失敗:', error);
@@ -499,13 +514,8 @@ export default function ShowtimesPage() {
   // 有場次的電影院列表
   const filteredCinemas = React.useMemo(() => {
     try {
-      console.log('filteredCinemas 計算開始...');
-      console.log('cinemas 狀態:', {
-        cinemasLoading,
-        cinemasLength: Array.isArray(cinemas) ? cinemas.length : 'not array',
-        showtimesLength: Array.isArray(showtimes) ? showtimes.length : 'not array',
-        showtimesLoading
-      });
+      console.log('%cfilteredCinemas 計算開始...', 'color: orange; font-weight: bold;');
+      console.log('cinemas 狀態:', { cinemasLoading, cinemasLength: cinemas.length, showtimesLength: showtimes.length, showtimesLoading });
       
       // 確保電影院數據已經載入
       if (cinemasLoading || !Array.isArray(cinemas) || cinemas.length === 0) {
@@ -534,18 +544,24 @@ export default function ShowtimesPage() {
       console.log('場次數據結構的第一個項目:', JSON.stringify(showtimes[0]).substring(0, 200) + '...');
       
       // 找出有場次的電影院ID
-      const cinemasWithShowtimes = findCinemasWithShowtimes(showtimes, cinemaQuery);
-      console.log(`找到 ${cinemasWithShowtimes.length} 個有場次的電影院`);
+      const cinemaIdsWithShowtimes = findCinemasWithShowtimes(showtimes, cinemaQuery);
+      console.log('[filteredCinemas] IDs from findCinemasWithShowtimes:', cinemaIdsWithShowtimes);
+
+      const filtered = cinemas.filter(cinema => 
+        cinemaIdsWithShowtimes.includes(String(cinema.id))
+      );
+      console.log('[filteredCinemas] Primary filter result (filtered):', JSON.parse(JSON.stringify(filtered.map(c => ({ id: c.id, name: c.name, lat: c.lat, lng: c.lng, latitude: c.latitude, longitude: c.longitude })))));
       
       // 過濾出有場次的電影院，確保 ID 比較時都是字串類型
-      const filtered = cinemas.filter(cinema => {
-        const cinemaId = String(cinema.id);
-        return cinemasWithShowtimes.some(id => String(id) === cinemaId);
-      });
-      console.log(`過濾後剩下 ${filtered.length} 個電影院`);
+      // const filtered = cinemas.filter(cinema => {
+      //   const cinemaId = String(cinema.id);
+      //   return cinemasWithShowtimes.some(id => String(id) === cinemaId);
+      // });
+      // console.log(`過濾後剩下 ${filtered.length} 個電影院`);
       
       // 如果過濾後沒有電影院，但有場次資料，則直接從場次資料建立電影院列表
-      if (filtered.length === 0 && showtimes.length > 0) {
+      if (filtered.length === 0 && cinemaIdsWithShowtimes.length > 0) {
+        console.log('%c[filteredCinemas] Fallback logic triggered: Main filter is empty, but showtimes exist.', 'color: yellow;');
         console.log('從場次資料中直接建立電影院列表');
         
         // 建立一個 Map 來去除重複的電影院
@@ -568,7 +584,7 @@ export default function ShowtimesPage() {
             } else {
               // This case means a cinema ID from showtimes data isn't in the main cinemas list.
               // This indicates a data inconsistency. For robustness, create a placeholder with default coords and log prominently.
-              console.warn(`警告: 在 'cinemas' 狀態中找不到 ID 為 ${theaterIdStr} 的電影院 (${currentTheaterName}). 將使用預設座標.`);
+              console.warn(`%c[filteredCinemas Fallback] 警告: 在 'cinemas' 狀態中找不到 ID 為 ${theaterIdStr} 的電影院 (${currentTheaterName}). 將使用預設座標.`, 'color: red;');
               cinemaMap.set(theaterIdStr, {
                 id: theaterIdStr,
                 name: currentTheaterName,
@@ -590,7 +606,6 @@ export default function ShowtimesPage() {
         });
         
         const cinemasFromShowtimes = Array.from(cinemaMap.values());
-        console.log(`從場次資料中建立了 ${cinemasFromShowtimes.length} 個電影院 (已嘗試使用真實座標)`);
         return cinemasFromShowtimes;
       }
       
@@ -774,6 +789,7 @@ export default function ShowtimesPage() {
       <div className="w-full max-w-lg mx-auto space-y-6 md:space-y-8">
         {/* 地圖組件 - 傳送場次資訊，只顯示有場次的電影院 */}
         <MapComponent 
+          ref={mapRef}
           cinemas={filteredCinemas} 
           selectedCinemas={selectedCinemas} 
           setSelectedCinemas={setSelectedCinemas} 
@@ -793,6 +809,7 @@ export default function ShowtimesPage() {
           setSelectedCinemas={handleCinemaSelectionFromList}
           filteredCinemas={filteredCinemas}
           userLocation={userLocation}
+          onCinemaClick={handleCinemaClick}
         />
         
         <ShowtimesList 

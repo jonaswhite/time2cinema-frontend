@@ -18,6 +18,7 @@ interface CinemaSelectorProps {
   setSelectedCinemas: React.Dispatch<React.SetStateAction<string[]>>;
   filteredCinemas: Cinema[];
   userLocation?: {lat: number, lng: number} | null;
+  onCinemaClick?: (cinemaIds: string[]) => void; // 新增：當電影院被點擊時回調
 }
 
 const CinemaSelector: React.FC<CinemaSelectorProps> = ({
@@ -29,7 +30,8 @@ const CinemaSelector: React.FC<CinemaSelectorProps> = ({
   selectedCinemas,
   setSelectedCinemas,
   filteredCinemas,
-  userLocation
+  userLocation,
+  onCinemaClick
 }) => {
   const [showAllCinemas, setShowAllCinemas] = useState(false);
   
@@ -83,11 +85,18 @@ const CinemaSelector: React.FC<CinemaSelectorProps> = ({
                   key={c.id}
                   variant={selectedCinemas.includes(c.id) ? "default" : "outline"}
                   className="text-xs sm:text-sm py-1 px-2 sm:px-3 h-auto"
-                  onClick={() => setSelectedCinemas(prev =>
-                    prev.includes(c.id)
-                      ? prev.filter(id => id !== c.id)
-                      : [...prev, c.id]
-                  )}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    // 使用函數式更新來確保獲取最新的狀態
+                    setSelectedCinemas(prev => {
+                      const newSelection = prev.includes(c.id)
+                        ? prev.filter(id => id !== c.id)
+                        : [...prev, c.id];
+                      // 觸發地圖縮放到所有選中的電影院
+                      onCinemaClick?.(newSelection);
+                      return newSelection;
+                    });
+                  }}
                 >
                   {c.name}
                 </Button>

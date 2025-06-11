@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useEffect, useState, useCallback, useImperativeHandle, forwardRef, ForwardedRef } from 'react';
 import { createPortal } from 'react-dom';
 import Map, { Marker } from 'react-map-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
@@ -9,36 +9,36 @@ import { Cinema, FormattedShowtime } from '@/components/showtimes/types';
 // 引入 React Icons 中的電影院圖標
 import { MdLocalMovies, MdMovie } from 'react-icons/md';
 
+export interface MapComponentRef {
+  flyToCinema: (cinemaId: string | string[]) => void;
+}
+
 interface MapComponentProps {
   cinemas: Cinema[];
   selectedCinemas: string[];
   setSelectedCinemas: React.Dispatch<React.SetStateAction<string[]>>;
-  // 新增 showtimesByCinema 參數，用於判斷哪些電影院有場次
-  showtimesByCinema?: Record<string, FormattedShowtime[]>; // Use specific type
-  // 用戶位置
-  userLocation?: {lat: number, lng: number} | null;
-  // 是否應該自動縮放到選中的電影院
+  showtimesByCinema: Record<string, FormattedShowtime[]>;
+  userLocation: { lat: number; lng: number } | null;
   autoZoomEnabled?: boolean;
-  // 切換自動縮放狀態的回調函數
   onAutoZoomToggle?: (enabled: boolean) => void;
 }
 
-const MapComponent: React.FC<MapComponentProps> = ({ 
-  cinemas, 
-  selectedCinemas, 
+const MapComponent = forwardRef<MapComponentRef, MapComponentProps>(({
+  cinemas,
+  selectedCinemas,
   setSelectedCinemas,
-  showtimesByCinema = {}, // 預設為空物件
-  userLocation = null,
-  autoZoomEnabled = true, // 預設啟用自動縮放
-  onAutoZoomToggle
-}) => {
+  showtimesByCinema,
+  userLocation,
+  autoZoomEnabled = true,
+  onAutoZoomToggle,
+}, ref) => {
   const [hoverCinemaId, setHoverCinemaId] = useState<string | null>(null);
   const [hoverCinemaLngLat, setHoverCinemaLngLat] = useState<[number, number] | null>(null);
   const mapRef = useRef<any>(null);
   const [mapInitialized, setMapInitialized] = useState(false);
 
   // 過濾出有有效座標的電影院（不再要求必須有場次）
-  const cinemasWithShowtimes = React.useMemo(() => {
+  const cinemasWithShowtimes = useMemo(() => {
     if (!cinemas || cinemas.length === 0) {
       return [];
     }
@@ -63,23 +63,146 @@ const MapComponent: React.FC<MapComponentProps> = ({
                          showtimesByCinema[cinema.id].length > 0;
       
       if (hasValidCoords && !hasShowtimes) {
-        console.log(`電影院 ${cinema.name}(ID:${cinema.id}) 有有效座標但沒有場次，已過濾`);
         return false; // 沒有場次就不顯示
       }
       
-      return hasValidCoords && hasShowtimes; // 必須同時有有效座標和場次才顯示
+      const shouldShow = hasValidCoords && hasShowtimes;
+      return shouldShow; // 必須同時有有效座標和場次才顯示
     });
   }, [cinemas, showtimesByCinema]);
 
+  // 計算所有選中電影院的邊界框，包含用戶位置
+  const calculateBounds = useCallback((selectedIds: string[]) => {
+    console.log('計算邊界框，選中的電影院 ID:', selectedIds);
+    
+    if (!mapRef.current || selectedIds.length === 0) {
+      console.log('mapRef 為空或沒有選中的電影院');
+      return null;
+    }
+
+    // 過濾出選中的電影院
+    const selectedCinemas = cinemasWithShowtimes.filter(cinema => 
+      selectedIds.includes(cinema.id)
+    );
+    console.log('找到的電影院:', selectedCinemas.map(c => c.name));
+
+    if (selectedCinemas.length === 0) {
+      console.log('沒有找到對應的電影院數據');
+      return null;
+    }
+
+    // 收集所有有效座標（電影院）
+    const coordinates = selectedCinemas.map(cinema => {
+      const latValue = cinema.lat ?? cinema.latitude;
+      const lngValue = cinema.lng ?? cinema.longitude;
+      
+      const lat = typeof latValue === 'string' ? parseFloat(latValue) : latValue;
+      const lng = typeof lngValue === 'string' ? parseFloat(lngValue) : lngValue;
+      
+      return [lng, lat] as [number, number];
+    }).filter(([lng, lat]) => !isNaN(lng) && !isNaN(lat));
+
+    // 如果沒有有效座標，返回 null
+    if (coordinates.length === 0) {
+      console.log('沒有有效的座標數據');
+      return null;
+    }
+
+    // 如果有用戶位置，也加入座標點集合
+    if (userLocation) {
+      console.log('加入用戶位置:', userLocation);
+      coordinates.push([userLocation.lng, userLocation.lat]);
+    }
+
+    // 計算邊界框
+    const lngs = coordinates.map(coord => coord[0]);
+    const lats = coordinates.map(coord => coord[1]);
+    
+    // 計算邊界框
+    const bounds: [[number, number], [number, number]] = [
+      [Math.min(...lngs), Math.min(...lats)], // 西南角
+      [Math.max(...lngs), Math.max(...lats)]  // 東北角
+    ];
+
+    console.log('計算出的原始邊界框:', bounds);
+
+    // 如果是單個點（電影院），增加緩衝區
+    if (selectedCinemas.length === 1) {
+      const buffer = 0.002; // 約 200 米，比之前小很多
+      bounds[0][0] -= buffer;
+      bounds[0][1] -= buffer;
+      bounds[1][0] += buffer;
+      bounds[1][1] += buffer;
+      console.log('單個電影院，調整後的邊界框:', bounds);
+    }
+    
+    return bounds;
+  }, [cinemasWithShowtimes, userLocation]);
+
+  // 使用 useImperativeHandle 暴露 flyToCinema 方法給父組件
+  useImperativeHandle(ref, () => ({
+    flyToCinema: (selectedIds: string | string[]) => {
+      console.log('[MapComponent] flyToCinema 被調用，selectedIds:', selectedIds);
+      
+      if (!mapRef.current) {
+        console.error('[MapComponent] 錯誤: mapRef.current 為空');
+        return;
+      }
+      
+      // 確保 selectedIds 是陣列
+      const ids = Array.isArray(selectedIds) ? selectedIds : [selectedIds];
+      console.log('[MapComponent] 處理的 ID 列表:', ids);
+      
+      // 計算邊界框
+      const bounds = calculateBounds(ids);
+      
+      if (!bounds) {
+        console.error('[MapComponent] 無法計算有效的邊界框');
+        return;
+      }
+      
+      console.log('[MapComponent] 計算出的邊界框:', bounds);
+      
+      // 根據選中數量調整 padding 和 zoom 級別
+      const padding = {
+        top: 30,
+        bottom: 30,
+        left: 30,
+        right: 30
+      };
+      
+      const options = {
+        padding,
+        duration: 1000,
+        essential: true,
+        maxZoom: ids.length === 1 ? 18 : 15 // 單個電影院時允許更大的縮放級別
+      };
+      
+      console.log('[MapComponent] 執行 fitBounds 參數:', options);
+      
+      try {
+        mapRef.current.fitBounds(bounds, options);
+        console.log('[MapComponent] fitBounds 執行成功');
+      } catch (error) {
+        console.error('[MapComponent] fitBounds 執行出錯:', error);
+      }
+      
+      // 啟用自動縮放（如果被禁用的話）
+      if (onAutoZoomToggle && !autoZoomEnabled) {
+        console.log('[MapComponent] 啟用自動縮放');
+        onAutoZoomToggle(true);
+      }
+    }
+  }), [cinemasWithShowtimes, autoZoomEnabled, onAutoZoomToggle]);
+
   // 計算電影院的中心點作為地圖初始位置
-  const center = React.useMemo(() => {
+  const center = useMemo(() => {
     // 如果有用戶位置，優先使用用戶位置作為中心點
     if (userLocation) {
       return { lat: userLocation.lat, lng: userLocation.lng };
     }
     
     if (!cinemasWithShowtimes || cinemasWithShowtimes.length === 0) {
-      console.log('沒有有效的電影院座標，使用台北市中心作為預設位置');
       return { lat: 25.0330, lng: 121.5654 }; // 台北市中心
     }
     
@@ -120,7 +243,7 @@ const MapComponent: React.FC<MapComponentProps> = ({
   }, [cinemasWithShowtimes, userLocation]);
 
   // 當用戶位置變化時，重新定位地圖
-  React.useEffect(() => {
+  useEffect(() => {
     if (userLocation && mapRef.current) {
       mapRef.current.flyTo({
         center: [userLocation.lng, userLocation.lat],
@@ -189,8 +312,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
           [bounds.maxLng + padding, bounds.maxLat + padding]
         ],
         {
-          padding: { top: 50, bottom: 50, left: 50, right: 50 },
-          maxZoom: 15, // 限制最大縮放級別，避免過度縮放
+          padding: { top: 10 , bottom: 10, left: 10, right: 10 },
+          maxZoom: 15  , // 限制最大縮放級別，避免過度縮放
           duration: 1500 // 動畫持續時間
         }
       );
@@ -318,6 +441,8 @@ const MapComponent: React.FC<MapComponentProps> = ({
       {/* 電影院懸停提示已移至每個標記內部 */}
     </div>
   );
-};
+});
+
+MapComponent.displayName = 'MapComponent';
 
 export default MapComponent;
