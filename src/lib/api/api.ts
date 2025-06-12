@@ -9,11 +9,16 @@ if (typeof window !== 'undefined') {
     API_URL = 'http://localhost:4002';
   } else {
     // 生產環境（Vercel）
-    API_URL = 'https://interested-shirl-jonaswhite-1cd398c7.koyeb.app/';
+    API_URL = 'https://interested-shirl-jonaswhite-1cd398c7.koyeb.app';
   }
 } else {
   // 服務器端渲染環境
-  API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://interested-shirl-jonaswhite-1cd398c7.koyeb.app/';
+  API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://interested-shirl-jonaswhite-1cd398c7.koyeb.app';
+}
+
+// 確保 API_URL 結尾沒有斜線
+if (API_URL.endsWith('/')) {
+  API_URL = API_URL.slice(0, -1);
 }
 
 export default API_URL;
