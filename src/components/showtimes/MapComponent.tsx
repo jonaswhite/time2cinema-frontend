@@ -37,38 +37,47 @@ const MapComponent = forwardRef<MapComponentRef, MapComponentProps>(({
   const mapRef = useRef<any>(null);
   const [mapInitialized, setMapInitialized] = useState(false);
 
-  // 過濾出有有效座標的電影院（不再要求必須有場次）
+  // 過濾出有有效座標和場次的電影院
   const cinemasWithShowtimes = useMemo(() => {
     if (!cinemas || cinemas.length === 0) {
+      console.log('cinemas 為空或未定義');
       return [];
     }
     
     // 輸出調試信息
     console.log(`總共有 ${cinemas.length} 間電影院`);
     if (showtimesByCinema) {
-      console.log(`showtimesByCinema 包含 ${Object.keys(showtimesByCinema).length} 個電影院的場次`);
+      const keys = Object.keys(showtimesByCinema);
+      console.log(`showtimesByCinema 包含 ${keys.length} 個電影院的場次`);
+      console.log('showtimesByCinema 中的前幾個鍵:', keys.slice(0, 5).join(', '));
     } else {
       console.log('showtimesByCinema 為空或未定義');
     }
     
     // 只顯示有場次的電影院
-    return cinemas.filter(cinema => {
+    const filtered = cinemas.filter(cinema => {
       // 檢查該電影院是否有有效座標
       const hasValidCoords = (cinema.lat !== undefined && cinema.lng !== undefined) || 
                            (cinema.latitude !== undefined && cinema.longitude !== undefined);
       
-      // 檢查是否有場次
-      const hasShowtimes = showtimesByCinema && 
-                         showtimesByCinema[cinema.id] && 
-                         showtimesByCinema[cinema.id].length > 0;
+      // 檢查是否有場次（同時檢查數字和字串類型的 ID）
+      const cinemaIdStr = String(cinema.id);
+      const cinemaShowtimes = showtimesByCinema?.[cinema.id] || showtimesByCinema?.[cinemaIdStr];
+      const hasShowtimes = Array.isArray(cinemaShowtimes) && cinemaShowtimes.length > 0;
       
       if (hasValidCoords && !hasShowtimes) {
         return false; // 沒有場次就不顯示
       }
       
       const shouldShow = hasValidCoords && hasShowtimes;
+      if (shouldShow) {
+        console.log(`電影院 ${cinema.name} (ID:${cinema.id}, 類型:${typeof cinema.id}) 將被顯示`);
+      }
       return shouldShow; // 必須同時有有效座標和場次才顯示
     });
+    
+    console.log(`過濾後顯示 ${filtered.length} 間有場次的電影院`);
+    return filtered;
   }, [cinemas, showtimesByCinema]);
 
   // 計算所有選中電影院的邊界框，包含用戶位置
