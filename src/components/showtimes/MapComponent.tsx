@@ -39,41 +39,60 @@ const MapComponent = forwardRef<MapComponentRef, MapComponentProps>(({
 
   // 過濾出有有效座標和場次的電影院
   const cinemasWithShowtimes = useMemo(() => {
-    if (!cinemas || cinemas.length === 0) {
+    if (!cinemas || !Array.isArray(cinemas) || cinemas.length === 0) {
       console.log('cinemas 為空或未定義');
       return [];
     }
     
-    // 輸出調試信息
     console.log(`總共有 ${cinemas.length} 間電影院`);
-    if (showtimesByCinema) {
-      const keys = Object.keys(showtimesByCinema);
-      console.log(`showtimesByCinema 包含 ${keys.length} 個電影院的場次`);
-      console.log('showtimesByCinema 中的前幾個鍵:', keys.slice(0, 5).join(', '));
-    } else {
-      console.log('showtimesByCinema 為空或未定義');
-    }
+    console.log('showtimesByCinema 中的前幾個鍵:', Object.keys(showtimesByCinema || {}).slice(0, 5));
+    
+    // 除錯：顯示前幾個電影院的 ID 和類型
+    console.log('前幾個電影院 ID 和類型:', 
+      cinemas.slice(0, 5).map(c => ({
+        id: c.id, 
+        type: typeof c.id,
+        name: c.name,
+        lat: c.lat ?? c.latitude,
+        lng: c.lng ?? c.longitude
+      }))
+    );
+    
+    // 除錯：顯示 showtimesByCinema 中的鍵和類型
+    const showtimeKeys = Object.keys(showtimesByCinema || {});
+    console.log('showtimesByCinema 中的鍵和類型:', 
+      showtimeKeys.slice(0, 5).map(key => ({
+        key,
+        type: typeof key,
+        value: showtimesByCinema?.[key]?.length
+      }))
+    );
     
     // 只顯示有場次的電影院
     const filtered = cinemas.filter(cinema => {
       // 檢查該電影院是否有有效座標
-      const hasValidCoords = (cinema.lat !== undefined && cinema.lng !== undefined) || 
-                           (cinema.latitude !== undefined && cinema.longitude !== undefined);
+      const lat = cinema.lat ?? cinema.latitude;
+      const lng = cinema.lng ?? cinema.longitude;
+      const hasValidCoords = lat !== undefined && lng !== undefined;
+      
+      if (!hasValidCoords) {
+        console.log(`電影院 ${cinema.name} (ID:${cinema.id}) 沒有有效座標`);
+        return false;
+      }
       
       // 檢查是否有場次（同時檢查數字和字串類型的 ID）
-      const cinemaIdStr = String(cinema.id);
-      const cinemaShowtimes = showtimesByCinema?.[cinema.id] || showtimesByCinema?.[cinemaIdStr];
+      const cinemaId = cinema.id;
+      const cinemaIdStr = String(cinemaId);
+      const cinemaShowtimes = showtimesByCinema?.[cinemaId] ?? showtimesByCinema?.[cinemaIdStr];
       const hasShowtimes = Array.isArray(cinemaShowtimes) && cinemaShowtimes.length > 0;
       
-      if (hasValidCoords && !hasShowtimes) {
-        return false; // 沒有場次就不顯示
+      if (!hasShowtimes) {
+        console.log(`電影院 ${cinema.name} (ID:${cinemaId}, 類型:${typeof cinemaId}) 沒有場次`);
+        return false;
       }
       
-      const shouldShow = hasValidCoords && hasShowtimes;
-      if (shouldShow) {
-        console.log(`電影院 ${cinema.name} (ID:${cinema.id}, 類型:${typeof cinema.id}) 將被顯示`);
-      }
-      return shouldShow; // 必須同時有有效座標和場次才顯示
+      console.log(`電影院 ${cinema.name} (ID:${cinemaId}, 類型:${typeof cinemaId}) 將被顯示`);
+      return true;
     });
     
     console.log(`過濾後顯示 ${filtered.length} 間有場次的電影院`);
@@ -81,7 +100,7 @@ const MapComponent = forwardRef<MapComponentRef, MapComponentProps>(({
   }, [cinemas, showtimesByCinema]);
 
   // 計算所有選中電影院的邊界框，包含用戶位置
-  const calculateBounds = useCallback((selectedIds: string[]) => {
+  const calculateBounds = useCallback((selectedIds: (string | number)[]) => {
     console.log('計算邊界框，選中的電影院 ID:', selectedIds);
     
     if (!mapRef.current || selectedIds.length === 0) {
@@ -89,11 +108,21 @@ const MapComponent = forwardRef<MapComponentRef, MapComponentProps>(({
       return null;
     }
 
-    // 過濾出選中的電影院
-    const selectedCinemas = cinemasWithShowtimes.filter(cinema => 
-      selectedIds.includes(cinema.id)
-    );
-    console.log('找到的電影院:', selectedCinemas.map(c => c.name));
+    // 將所有選中的 ID 轉換為字串以便比較
+    const selectedIdsSet = new Set(selectedIds.map(id => String(id)));
+    
+    // 過濾出選中的電影院，考慮 ID 類型的差異
+    const selectedCinemas = cinemasWithShowtimes.filter(cinema => {
+      const cinemaId = cinema.id;
+      const cinemaIdStr = String(cinemaId);
+      return selectedIdsSet.has(cinemaIdStr) || selectedIdsSet.has(String(cinemaId));
+    });
+    
+    console.log('找到的電影院:', selectedCinemas.map(c => ({
+      id: c.id,
+      name: c.name,
+      type: typeof c.id
+    })));
 
     if (selectedCinemas.length === 0) {
       console.log('沒有找到對應的電影院數據');
@@ -150,7 +179,7 @@ const MapComponent = forwardRef<MapComponentRef, MapComponentProps>(({
 
   // 使用 useImperativeHandle 暴露 flyToCinema 方法給父組件
   useImperativeHandle(ref, () => ({
-    flyToCinema: (selectedIds: string | string[]) => {
+    flyToCinema: (selectedIds: string | string[] | number[]) => {
       console.log('[MapComponent] flyToCinema 被調用，selectedIds:', selectedIds);
       
       if (!mapRef.current) {
@@ -160,7 +189,7 @@ const MapComponent = forwardRef<MapComponentRef, MapComponentProps>(({
       
       // 確保 selectedIds 是陣列
       const ids = Array.isArray(selectedIds) ? selectedIds : [selectedIds];
-      console.log('[MapComponent] 處理的 ID 列表:', ids);
+      console.log('[MapComponent] 處理的 ID 列表 (轉換前):', ids);
       
       // 計算邊界框
       const bounds = calculateBounds(ids);
