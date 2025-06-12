@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import API_URL from '@/lib/api';
+import API_URL from '@/lib/api/api';
 
 // 定義電影資料的介面
 interface BoxOfficeMovie {

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import API_URL from "@/lib/api";
+import API_URL from "@/lib/api/api";
 
 // 導入拆分出的組件和類型
 import { 
@@ -145,7 +145,10 @@ export default function ShowtimesPage() {
             
             setMovie({
               id: foundMovie.id.toString(),
-              name: foundMovie.chinese_title || foundMovie.english_title || decodedMovieId,
+              display_title: foundMovie.chinese_title || foundMovie.english_title || decodedMovieId,
+              full_title: foundMovie.english_title || foundMovie.chinese_title || decodedMovieId,
+              chinese_title: foundMovie.chinese_title || null,
+              english_title: foundMovie.english_title || null,
               release: foundMovie.release_date || 'N/A', // 提供合理的預設值
               poster: foundMovie.poster_url || "https://placehold.co/500x750/222/white?text=No+Poster"
             });
@@ -154,7 +157,10 @@ export default function ShowtimesPage() {
             console.warn(`[fetchMovieInfo] 電影搜尋 API 未找到電影: ${decodedMovieId}`);
             setMovie({
               id: decodedMovieId, // 若未找到，ID 可能仍為電影名稱
-              name: decodedMovieId,
+              display_title: decodedMovieId,
+              full_title: decodedMovieId,
+              chinese_title: null,
+              english_title: null,
               release: 'N/A',
               poster: "https://placehold.co/500x750/222/white?text=Movie+Not+Found"
             });
@@ -164,7 +170,10 @@ export default function ShowtimesPage() {
           console.error(`[fetchMovieInfo] 電影搜尋 API 請求失敗: ${searchResponse.status} ${searchResponse.statusText}`);
           setMovie({
             id: decodedMovieId,
-            name: decodedMovieId,
+            display_title: decodedMovieId,
+            full_title: decodedMovieId,
+            chinese_title: null,
+            english_title: null,
             release: 'N/A',
             poster: "https://placehold.co/500x750/222/white?text=Error+Fetching+Movie"
           });
@@ -173,7 +182,10 @@ export default function ShowtimesPage() {
         console.error('[fetchMovieInfo] 獲取電影資訊時發生錯誤:', error);
         setMovie({
           id: decodedMovieId,
-          name: decodedMovieId,
+          display_title: decodedMovieId,
+          full_title: decodedMovieId,
+          chinese_title: null,
+          english_title: null,
           release: 'N/A',
           poster: "https://placehold.co/500x750/222/white?text=Error"
         });
@@ -240,7 +252,7 @@ export default function ShowtimesPage() {
         return;
       }
 
-      console.log(`[fetchShowtimes] 開始查詢電影 ${movie.name} (ID: ${movie.id}) 在日期 ${formattedDate} 的場次`);
+      console.log(`[fetchShowtimes] 開始查詢電影 ${movie.display_title} (ID: ${movie.id}) 在日期 ${formattedDate} 的場次`);
       setShowtimesLoading(true);
 
       try {
@@ -260,7 +272,7 @@ export default function ShowtimesPage() {
         setShowtimes(data);
 
       } catch (error) {
-        console.error(`[fetchShowtimes] 獲取電影 ${movie.name} (ID: ${movie.id}) 在日期 ${formattedDate} 的場次資料時發生錯誤:`, error);
+        console.error(`[fetchShowtimes] 獲取電影 ${movie.display_title} (ID: ${movie.id}) 在日期 ${formattedDate} 的場次資料時發生錯誤:`, error);
         setShowtimes([]); // 出錯時清空場次
       } finally {
         setShowtimesLoading(false);
@@ -390,7 +402,7 @@ export default function ShowtimesPage() {
               const formattedShowtime: FormattedShowtime = {
                 id: uniqueShowtimeId,
                 movie_id: String(st.movie_id || movie?.id || 'unknown_movie_id'),
-                movie_name: st.movie_name || movie?.name || '未知電影',
+                movie_display_title: st.movie_display_title || st.movie_name || movie?.display_title || '未知電影',
                 theater_id: theaterId,
                 theater_name: theaterShowtimes.theater_name || theaterShowtimes.theaterName || '未知影院',
                 date: showtimeDateStr,
@@ -473,12 +485,12 @@ export default function ShowtimesPage() {
           返回
         </Button>
         <div className="flex-1">
-          <h1 className="text-2xl font-bold">{movie.name}</h1>
+          <h1 className="text-2xl font-bold">{movie.display_title}</h1>
         </div>
         <div className="w-20 h-30 overflow-hidden rounded-md shadow-lg">
           <img 
             src={movie.poster || 'https://image.tmdb.org/t/p/w500/pWJW4c8jHRw0X0FMiRfvOUXKGgf.jpg'} 
-            alt={movie.name} 
+            alt={movie.display_title} 
             className="w-full h-full object-cover" 
             onError={(e) => {
               // 如果圖片載入失敗，使用預設圖片

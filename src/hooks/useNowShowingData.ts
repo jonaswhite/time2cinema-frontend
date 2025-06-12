@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { NowShowingMovie, DisplayMovie } from '@/lib/types/movie';
 import { formatDate } from '@/lib/utils/format';
-import API_URL from '@/lib/api';
+import API_URL from '@/lib/api/api';
 
 interface UseNowShowingDataProps { // 新增 Props 接口
   isBackendReady: boolean;

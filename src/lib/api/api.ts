@@ -9,11 +9,11 @@ if (typeof window !== 'undefined') {
     API_URL = 'http://localhost:4002';
   } else {
     // 生產環境（Vercel）
-    API_URL = 'https://time2cinema-backend.onrender.com';
+    API_URL = 'https://interested-shirl-jonaswhite-1cd398c7.koyeb.app/';
   }
 } else {
   // 服務器端渲染環境
-  API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://time2cinema-backend.onrender.com';
+  API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://interested-shirl-jonaswhite-1cd398c7.koyeb.app/';
 }
 
 export default API_URL;
