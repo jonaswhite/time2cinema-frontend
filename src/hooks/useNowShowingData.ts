@@ -31,12 +31,15 @@ export const useNowShowingData = ({ isBackendReady }: UseNowShowingDataProps) =>
       console.log('API Response data:', data);
       
       const formattedData: DisplayMovie[] = data.map((movie: NowShowingMovie) => {
-        const display_title = movie.chinese_title || movie.full_title || '未知電影';
+        const final_chinese_title = movie.chinese_title || movie.full_title || '';
+        const final_full_title = movie.full_title || movie.chinese_title || '';
+        const display_title = final_chinese_title || '未知電影';
+
         const formattedMovie = {
           id: movie.id?.toString() || '',
           display_title: display_title,
-          full_title: movie.full_title,
-          chinese_title: movie.chinese_title,
+          full_title: final_full_title,
+          chinese_title: final_chinese_title,
           english_title: movie.english_title,
           releaseDate: formatDate(movie.release_date) || '未定',
           poster: movie.poster_url,
@@ -44,7 +47,6 @@ export const useNowShowingData = ({ isBackendReady }: UseNowShowingDataProps) =>
           tmdb_id: movie.tmdb_id,
           genres: movie.genres || []
         };
-        console.log('Formatted movie:', formattedMovie);
         return formattedMovie;
       });
       

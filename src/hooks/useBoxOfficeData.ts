@@ -32,12 +32,15 @@ export const useBoxOfficeData = ({ isBackendReady }: UseBoxOfficeDataProps) => {
       }
       // 轉換數據格式
       const formattedData: DisplayMovie[] = data.map((movie: BoxOfficeMovie) => {
-        const display_title = movie.chinese_title || movie.full_title || '未知電影';
+        const final_chinese_title = movie.chinese_title || movie.full_title || '';
+        const final_full_title = movie.full_title || movie.chinese_title || '';
+        const display_title = final_chinese_title || '未知電影';
+
         return {
           id: movie.id?.toString() || '',
           display_title: display_title,
-          full_title: movie.full_title,
-          chinese_title: movie.chinese_title,
+          full_title: final_full_title,
+          chinese_title: final_chinese_title,
           english_title: movie.english_title,
           rank: movie.rank,
           weeklySales: formatTickets(movie.tickets),
