@@ -57,6 +57,17 @@ type Props = {
   searchParams: { [key: string]: string | string[] | undefined };
 };
 
+// Component to display a warning for in-app browsers
+const InAppBrowserWarning = ({ onDismiss }: { onDismiss: () => void }) => (
+  <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4 mx-auto w-full max-w-lg relative" role="alert">
+    <p className="font-bold">定位精準度提醒</p>
+    <p>在 App 內瀏覽器（如 IG、FB）中，定位可能不準確。建議使用您手機的預設瀏覽器（如 Safari 或 Chrome）開啟，以獲得最佳體驗。</p>
+    <button onClick={onDismiss} className="absolute top-2 right-2 p-1">
+      <svg className="fill-current h-6 w-6 text-yellow-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><title>關閉</title><path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z"/></svg>
+    </button>
+  </div>
+);
+
 const generateMovieJsonLd = (movieData: MovieInfo, pageUrl: string) => {
   const schema: any = {
     "@context": "https://schema.org",
@@ -126,7 +137,24 @@ export default function ShowtimesPage() {
   const [locationLoading, setLocationLoading] = useState(true);
   // 控制地圖是否應該自動縮放
   const [autoZoomEnabled, setAutoZoomEnabled] = useState(true);
-  const mapRef = useRef<MapComponentRef>(null);
+    const mapRef = useRef<MapComponentRef>(null);
+
+  // --- In-App Browser Detection ---
+  const [showInAppBrowserWarning, setShowInAppBrowserWarning] = useState(false);
+
+  const isInsideInAppBrowser = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    const ua = navigator.userAgent || navigator.vendor || (window as any).opera;
+    // Comprehensive regex for Facebook, Instagram, and Line
+    return /instagram|fbav|fbsv|fbbv|fbia|fb_iab|line/i.test(ua);
+  }, []);
+
+  useEffect(() => {
+    if (isInsideInAppBrowser()) {
+      setShowInAppBrowserWarning(true);
+    }
+  }, [isInsideInAppBrowser]);
+  // --- End In-App Browser Detection ---
 
   // 從電影院選擇列表更新選擇時的處理函數
   const handleCinemaSelectionFromList = (newSelection: string[] | ((prevState: string[]) => string[])) => {
@@ -170,7 +198,7 @@ export default function ShowtimesPage() {
             setUserLocation({ lat: 25.0330, lng: 121.5654 });
             setLocationLoading(false);
           },
-          { timeout: 10000, enableHighAccuracy: false }
+          { timeout: 15000, enableHighAccuracy: true }
         );
       } else {
         console.log('瀏覽器不支援地理位置');
@@ -763,7 +791,8 @@ export default function ShowtimesPage() {
           </button>
         </div>
       )}
-      <main className="flex min-h-screen flex-col items-center px-4 md:px-8 py-6 bg-black text-white">
+            <main className="flex min-h-screen flex-col items-center px-4 md:px-8 py-6 bg-black text-white">
+      {showInAppBrowserWarning && <InAppBrowserWarning onDismiss={() => setShowInAppBrowserWarning(false)} />}
       <div className="w-full max-w-lg mx-auto flex items-center mb-6 md:mb-8">
         <Button variant="outline" onClick={() => router.push('/')} className="mr-4 text-sm py-1 px-3">
           返回
