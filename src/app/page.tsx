@@ -1,11 +1,16 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import BoxOfficeSection from "@/components/home/BoxOfficeSection";
 import NowShowingSection from "@/components/home/NowShowingSection";
 import { SearchBar } from '@/components/ui/search-bar';
-import API_URL from '@/lib/api/api'; // 確保引入 API_URL
+import API_URL from '@/lib/api/api';
+import { useBoxOfficeData } from '@/hooks/useBoxOfficeData';
+import { useNowShowingData } from '@/hooks/useNowShowingData';
+import { DisplayMovie } from '@/lib/types/movie';
+import MovieCard from "@/components/home/MovieCard";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // 電影小知識陣列
 const movieFacts = [
@@ -43,85 +48,107 @@ const Home = () => {
   const [activeTab, setActiveTab] = useState<"box-office" | "now-showing">("box-office");
   const [searchTerm, setSearchTerm] = useState('');
   
-  // 新增狀態
   const [isColdStartWaiting, setIsColdStartWaiting] = useState<boolean>(false);
   const [isBackendReady, setIsBackendReady] = useState<boolean>(false);
   const [loadingProgress, setLoadingProgress] = useState<number>(0);
-  const [randomMovieFact, setRandomMovieFact] = useState<string>(
-    movieFacts[Math.floor(Math.random() * movieFacts.length)]
-  );
+  const [randomMovieFact, setRandomMovieFact] = useState<string>(movieFacts[0]);
+
+  const { boxOffice, loading: loadingBoxOffice, error: errorBoxOffice, refetch: refetchBoxOffice } = useBoxOfficeData({ isBackendReady });
+  const { nowShowing, loading: loadingNowShowing, error: errorNowShowing, refetch: refetchNowShowing } = useNowShowingData({ isBackendReady });
+
+  const unifiedSearchResults = useMemo(() => {
+    if (!searchTerm.trim()) return [];
+
+    const combined = [...boxOffice, ...nowShowing];
+    const uniqueMovies = new Map<string, DisplayMovie>();
+    
+    // 票房電影優先
+    boxOffice.forEach(movie => {
+        if (movie.id && !uniqueMovies.has(movie.id)) {
+            uniqueMovies.set(movie.id, movie);
+        }
+    });
+    nowShowing.forEach(movie => {
+        if (movie.id && !uniqueMovies.has(movie.id)) {
+            uniqueMovies.set(movie.id, movie);
+        }
+    });
+
+    const searchTermLower = searchTerm.toLowerCase();
+    return Array.from(uniqueMovies.values()).filter(movie => {
+      return (
+        movie.display_title?.toLowerCase().includes(searchTermLower) ||
+        movie.full_title?.toLowerCase().includes(searchTermLower) ||
+        (movie.english_title && movie.english_title.toLowerCase().includes(searchTermLower)) ||
+        (movie.chinese_title && movie.chinese_title.toLowerCase().includes(searchTermLower))
+      );
+    });
+  }, [searchTerm, boxOffice, nowShowing]);
 
   const isSearching = searchTerm.trim().length > 0;
+  const isLoadingGlobal = loadingBoxOffice || loadingNowShowing;
 
   useEffect(() => {
-    const lastVisitTime = localStorage.getItem('lastVisitTime');
-    const now = Date.now();
-    // 30 分鐘算冷啟動，避免過於頻繁顯示等待畫面
-    const isPossibleColdStart = !lastVisitTime || (now - parseInt(lastVisitTime, 10)) > 30 * 60 * 1000; 
+    const lastVisit = localStorage.getItem('lastVisit');
+    const now = new Date().getTime();
+    const thirtyMinutes = 30 * 60 * 1000;
 
-    if (isPossibleColdStart && !isBackendReady) {
+    if (!lastVisit || (now - parseInt(lastVisit, 10)) > thirtyMinutes) {
       setIsColdStartWaiting(true);
-      fetch(`${API_URL}/api/ping`)
-        .then(response => {
-          if (response.ok) {
-            console.log('後端服務已喚醒');
-            // Koyeb 啟動較快，不需要額外等待時間
-            setIsBackendReady(true);
-            setIsColdStartWaiting(false); // 關閉等待畫面
-            setLoadingProgress(100); // 進度條滿
-          } else {
-            // 如果 ping 失敗，也繼續嘗試，但可能會有錯誤
-            console.warn('後端服務 ping 失敗，但仍嘗試繼續');
-            setIsBackendReady(true);
+      const pingBackend = async () => {
+        try {
+          await fetch(`${API_URL}/api/ping`);
+          setIsBackendReady(true);
+          setTimeout(() => {
             setIsColdStartWaiting(false);
-          }
-        })
-        .catch(() => {
-          console.error('後端服務 ping 請求失敗');
-          setIsBackendReady(true); // 即使 ping 失敗也嘗試繼續
+            localStorage.setItem('lastVisit', now.toString());
+          }, 1500);
+        } catch (error) {
+          console.error("Backend ping failed:", error);
           setIsColdStartWaiting(false);
-        });
+        }
+      };
+      pingBackend();
     } else {
-      setIsBackendReady(true); // 非冷啟動，直接設定為 ready
+      setIsBackendReady(true);
     }
-    localStorage.setItem('lastVisitTime', now.toString());
-  }, [isBackendReady]); // isBackendReady 加入依賴，避免重複執行
+  }, []);
 
   useEffect(() => {
     let progressInterval: NodeJS.Timeout | null = null;
     let factInterval: NodeJS.Timeout | null = null;
-
     if (isColdStartWaiting) {
-      setLoadingProgress(0); // 重置進度
       progressInterval = setInterval(() => {
         setLoadingProgress(prev => {
-          if (prev >= 90) { // 最多到90%，剩下的由 ping 成功後設置為100%
+          if (prev >= 95 && !isBackendReady) {
             if (progressInterval) clearInterval(progressInterval);
-            return 90;
+            return 95;
           }
-          return prev + 3; // 調整進度增加速度，大約30秒到90%
+          if (isBackendReady) {
+            if (progressInterval) clearInterval(progressInterval);
+            return 100;
+          }
+          const increment = prev < 60 ? 5 : (prev < 85 ? 2 : 1);
+          return Math.min(prev + increment, 95);
         });
       }, 1000);
 
       factInterval = setInterval(() => {
         setRandomMovieFact(movieFacts[Math.floor(Math.random() * movieFacts.length)]);
-      }, 8000); // 每 8 秒更換一個電影小知識
+      }, 8000);
     }
     return () => {
       if (progressInterval) clearInterval(progressInterval);
       if (factInterval) clearInterval(factInterval);
     };
-  }, [isColdStartWaiting]);
+  }, [isColdStartWaiting, isBackendReady]);
 
   if (isColdStartWaiting) {
     return (
       <div className="fixed inset-0 bg-background z-50 flex flex-col items-center justify-center p-6 text-foreground">
         <div className="max-w-md text-center">
-          {/* 這裡可以使用 public/ticket-stub.png，如果沒有，可以暫時用文字或Emoji */}
-          {/* <img src="/ticket-stub.png" alt="Time2Cinema Logo" className="w-24 h-24 mx-auto mb-6 animate-pulse" /> */}
           <img src="/time2cinema-logo.svg" alt="Time2Cinema Logo" className="w-32 h-auto mx-auto mb-6 animate-bounce" />
           <h2 className="text-3xl font-bold text-primary mb-4">播放準備中...</h2>
-          
           <div className="w-full bg-muted rounded-full h-3 mb-2 overflow-hidden">
             <div 
               className="bg-primary h-3 rounded-full transition-all duration-1000 ease-linear" 
@@ -131,18 +158,13 @@ const Home = () => {
           <p className="text-muted-foreground text-sm mb-6">
             {loadingProgress < 80 ? "正在為您呼叫服務生...呃...是伺服器啦！" : "伺服器即將啟動完成！"}
           </p>
-          
           <p className="text-muted-foreground mb-6 text-sm">
             您是今天第一位貴賓，請稍待片刻......
           </p>
-          
           <div className="bg-card p-4 rounded-lg mb-6 shadow-lg">
             <h3 className="text-primary text-lg mb-2 font-semibold">電影冷知識放送</h3>
-            <p className="text-muted-foreground text-sm italic">
-              "{randomMovieFact}"
-            </p>
+            <p className="text-muted-foreground text-sm italic">"{randomMovieFact}"</p>
           </div>
-          
           <p className="text-xs text-muted-foreground">
             Time2Cinema 目前使用免費方案部署，感謝您的耐心！
           </p>
@@ -163,9 +185,36 @@ const Home = () => {
             className="w-full mb-4"
           />
           
-          {!isSearching && (
+          {isSearching ? (
+            <div className="space-y-3">
+              <h2 className="text-sm font-medium text-muted-foreground mb-3">搜尋結果</h2>
+              {isLoadingGlobal && unifiedSearchResults.length === 0 ? (
+                <div className="space-y-2">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="bg-card/80 rounded-md overflow-hidden shadow-sm flex flex-row h-[120px] w-full border border-border/20">
+                      <div className="relative w-[80px] flex-shrink-0"><Skeleton className="h-full w-full" /></div>
+                      <div className="py-3 px-4 flex flex-col justify-between flex-1">
+                        <div><Skeleton className="h-5 w-3/4 mb-1" /><Skeleton className="h-3 w-1/2" /></div>
+                        <div><Skeleton className="h-3 w-1/3" /></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : unifiedSearchResults.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  沒有符合「{searchTerm}」的電影
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {unifiedSearchResults.map((movie, index) => (
+                    <MovieCard key={`${movie.id || 'search-result'}-${index}`} movie={movie} showRank={!!movie.rank} />
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
             <Tabs 
-              defaultValue="box-office" 
+              value={activeTab}
               className="w-full mb-4"
               onValueChange={(value) => setActiveTab(value as "box-office" | "now-showing")}
             >
@@ -173,28 +222,25 @@ const Home = () => {
                 <TabsTrigger value="box-office">本週票房</TabsTrigger>
                 <TabsTrigger value="now-showing">上映中</TabsTrigger>
               </TabsList>
+              <TabsContent value="box-office" className="mt-4">
+                <BoxOfficeSection 
+                  movies={boxOffice}
+                  loading={loadingBoxOffice}
+                  error={errorBoxOffice}
+                  refetch={refetchBoxOffice}
+                  isBackendReady={isBackendReady}
+                />
+              </TabsContent>
+              <TabsContent value="now-showing" className="mt-4">
+                <NowShowingSection 
+                  movies={nowShowing}
+                  loading={loadingNowShowing}
+                  error={errorNowShowing}
+                  refetch={refetchNowShowing}
+                  isBackendReady={isBackendReady}
+                />
+              </TabsContent>
             </Tabs>
-          )}
-          
-          {isSearching ? (
-            <div>
-              <h2 className="text-sm font-medium text-muted-foreground mb-3">搜尋結果</h2>
-              <div>
-                {activeTab === "box-office" ? (
-                  <BoxOfficeSection searchTerm={searchTerm} isBackendReady={isBackendReady} />
-                ) : (
-                  <NowShowingSection searchTerm={searchTerm} isBackendReady={isBackendReady} />
-                )}
-              </div>
-            </div>
-          ) : (
-            <div>
-              {activeTab === "box-office" ? (
-                <BoxOfficeSection searchTerm={searchTerm} isBackendReady={isBackendReady} />
-              ) : (
-                <NowShowingSection searchTerm={searchTerm} isBackendReady={isBackendReady} />
-              )}
-            </div>
           )}
         </div>
       </div>
