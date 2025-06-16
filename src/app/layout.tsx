@@ -12,6 +12,8 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+import { Viewport } from 'next';
+
 export const metadata: Metadata = {
   title: "Time2Cinema: 查電影場次",
   description: "查詢全台上映中電影場次、票房數據及電影院地圖資訊。Time2Cinema 是時候看部電影了！",
@@ -81,8 +83,13 @@ export const metadata: Metadata = {
     ],
   },
   manifest: "/site.webmanifest",
+};
+
+export const viewport: Viewport = {
   themeColor: "#ffffff",
-  viewport: "width=device-width, initial-scale=1, maximum-scale=5",
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5,
 };
 
 export default function RootLayout({

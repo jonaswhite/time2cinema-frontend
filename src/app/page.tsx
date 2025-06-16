@@ -65,12 +65,10 @@ const Home = () => {
         .then(response => {
           if (response.ok) {
             console.log('後端服務已喚醒');
-            // 等待一小段時間確保後端完全啟動
-            setTimeout(() => {
-              setIsBackendReady(true);
-              setIsColdStartWaiting(false); // 關閉等待畫面
-              setLoadingProgress(100); // 進度條滿
-            }, 1500); // Adjusted delay to 1.5 seconds
+            // Koyeb 啟動較快，不需要額外等待時間
+            setIsBackendReady(true);
+            setIsColdStartWaiting(false); // 關閉等待畫面
+            setLoadingProgress(100); // 進度條滿
           } else {
             // 如果 ping 失敗，也繼續嘗試，但可能會有錯誤
             console.warn('後端服務 ping 失敗，但仍嘗試繼續');

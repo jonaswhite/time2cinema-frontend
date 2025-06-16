@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'https://time2cinema-backend.onrender.com/api/:path*',
+        destination: 'https://interested-shirl-jonaswhite-1cd398c7.koyeb.app/api/:path*',
       },
     ];
   },
